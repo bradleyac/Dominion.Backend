@@ -2,13 +2,13 @@ using System.Collections.Immutable;
 using System.Data;
 using System.Reflection.Metadata.Ecma335;
 using System.Text.Json.Serialization;
+using Fluent;
 using Microsoft.OpenApi.Services;
-using static Dominion.Backend.MoveCardsEffectHandler;
 
 namespace Dominion.Backend;
 
-public record GameState(string GameId, bool GameStarted, CardPileState[] KingdomCards, PlayerState[] Players, CardInstance[] Trash, int CurrentTurn, int CurrentPlayer, int ActivePlayer, Phase Phase, string[] Log, PlayCardResumeState? ResumeState);
-public record PlayerState(string Id, CardInstance[] Hand, CardInstance[] Deck, CardInstance[] Discard, CardInstance[] Play, PlayerResources Resources, CardFilter? ActiveFilter);
+public record GameState(string GameId, bool GameStarted, CardPileState[] KingdomCards, PlayerState[] Players, CardInstance[] Trash, CardInstance[] Reveal, int CurrentTurn, int CurrentPlayer, string? ActivePlayerId, Phase Phase, string[] Log, PlayCardResumeState? ResumeState, Dictionary<string, int> StoredValues);
+public record PlayerState(string Id, CardInstance[] Hand, CardInstance[] Deck, CardInstance[] Discard, CardInstance[] Play, CardInstance[] PrivateReveal, PlayerResources Resources, CardFilter? ActiveFilter);
 public record PlayerResources(int Actions, int Buys, int Coins, int Villagers, int Coffers, int Points)
 {
   public static readonly PlayerResources Empty = new PlayerResources(0, 0, 0, 0, 0, 0);
@@ -23,14 +23,14 @@ public class CardInstance(CardData card)
   public CardData Card { get; set; } = card;
 }
 public record CardPileState(CardData Card, int Remaining);
-public record CardData(int Id, string Name, int Cost, int? Value, CardType[] Types, CardEffect[] Effects);
+public record CardData(int Id, string Name, int Cost, int? Value, CardType[] Types, FluentEffect[] Effects);
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(MoveCardsEffect), "move")]
 [JsonDerivedType(typeof(SimpleEffect), "simple")]
-public abstract class CardEffect { }
-public class SimpleEffect : CardEffect { public required string Effect { get; set; } }
-public class MoveCardsEffect : CardEffect
+public abstract class LegacyCardEffect { }
+public class SimpleEffect : LegacyCardEffect { public required string Effect { get; set; } }
+public class MoveCardsEffect : LegacyCardEffect
 {
   public required EffectTarget Target { get; set; }
   public required CardZone To { get; set; }
@@ -44,10 +44,9 @@ public abstract record CardSelectionResult { }
 public record SelectedCardIdsResult(int[] CardIds) : CardSelectionResult;
 public record SelectedCardInstancesResult(string[] CardInstanceIds) : CardSelectionResult;
 
-public class CardFilter
+public record CardFilter
 {
   public string Id { get; } = Guid.NewGuid().ToString();
-  [JsonConverter(typeof(JsonStringEnumConverter))]
   public required CardZone From { get; set; }
   public CardType[]? Types { get; set; }
   public int? MinCost { get; set; }
@@ -55,9 +54,14 @@ public class CardFilter
   public int? MinCount { get; set; }
   public int? MaxCount { get; set; }
   public int? CardId { get; set; }
+  public int? NotId { get; set; }
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CardType { Action, Treasure, Victory, Curse, Attack, }
-public enum CardZone { Supply, Trash, Deck, Discard, Hand, Play, Exile, }
-public enum EffectTarget { Me, All, Opps, }
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum CardZone { Supply, Trash, Deck, Discard, Hand, Play, Exile, Reveal, PrivateReveal }
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum EffectTarget { All, Opps, }
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum Phase { Action, BuyOrPlay, Buy, Cleanup }

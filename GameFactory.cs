@@ -21,17 +21,19 @@ public static class GameFactory
       GameId: Guid.NewGuid().ToString(),
       GameStarted: false,
       KingdomCards: [.. kingdomCardInitData.Select(idCount => new CardPileState(MasterCardData.AllCards[idCount.Item1], idCount.Item2))],
-      Players: [new PlayerState(hostPlayerId, [], CreateStartingDeck(), [], [], PlayerResources.Empty, null)],
+      Players: [new PlayerState(hostPlayerId, [], CreateStartingDeck(), [], [], [], PlayerResources.Empty, null)],
       Trash: [],
+      Reveal: [],
       CurrentTurn: 1,
       CurrentPlayer: 0,
-      ActivePlayer: 0,
+      ActivePlayerId: null,
       Phase: Phase.Action,
       Log: [],
-      ResumeState: null
+      ResumeState: null,
+      StoredValues: []
     );
   }
 
-  public static GameState AddPlayer(GameState game, string playerId) => game with { Players = [.. game.Players, new PlayerState(playerId, [], CreateStartingDeck(), [], [], PlayerResources.Empty, null)] };
+  public static GameState AddPlayer(GameState game, string playerId) => game with { Players = [.. game.Players, new PlayerState(playerId, [], CreateStartingDeck(), [], [], [], PlayerResources.Empty, null)] };
   private static CardInstance[] CreateStartingDeck() => MasterCardData.StartingDeck.SelectMany(deck => Enumerable.Range(1, deck.Item2).Select(_ => new CardInstance(MasterCardData.AllCards[deck.Item1]))).ToArray();
 }

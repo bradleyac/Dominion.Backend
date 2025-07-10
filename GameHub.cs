@@ -61,7 +61,7 @@ public class GameHub(IGameStateService gameService) : Hub
   {
     var game = await _gameService.GetGameAsync(gameId);
 
-    if (game is null || game.Players[game.CurrentPlayer].Id != playerId || game.ActivePlayer != game.CurrentPlayer)
+    if (game is null || game.Players[game.CurrentPlayer].Id != playerId || game.ActivePlayerId != game.Players[game.CurrentPlayer].Id)
     {
       return;
     }
@@ -77,7 +77,7 @@ public class GameHub(IGameStateService gameService) : Hub
   {
     var game = await _gameService.GetGameAsync(gameId);
 
-    if (game is null || game.Players[game.CurrentPlayer].Id != playerId || game.ActivePlayer != game.CurrentPlayer)
+    if (game is null || game.Players[game.CurrentPlayer].Id != playerId || game.ActivePlayerId != game.Players[game.CurrentPlayer].Id)
     {
       return;
     }

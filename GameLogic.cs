@@ -24,7 +24,7 @@ public static class GameLogic
       };
     })];
 
-    return game with { GameStarted = true, Players = players, CurrentPlayer = 0, ActivePlayer = 0 };
+    return game with { GameStarted = true, Players = players, CurrentPlayer = 0, ActivePlayerId = players[0].Id };
   }
 
   public static async Task<GameState> EndTurnAsync(GameState game)
@@ -53,7 +53,7 @@ public static class GameLogic
       }
     }).ToArray();
 
-    return game with { Phase = Phase.Action, Players = players, CurrentTurn = nextTurn, CurrentPlayer = nextPlayerIndex, ActivePlayer = nextPlayerIndex };
+    return game with { Phase = Phase.Action, Players = players, CurrentTurn = nextTurn, CurrentPlayer = nextPlayerIndex, ActivePlayerId = players[nextPlayerIndex].Id };
   }
 
   public static async Task<GameState> EndActionPhaseAsync(GameState game, string playerId)
@@ -67,7 +67,7 @@ public static class GameLogic
 
   public static async Task<GameState> BuyCardAsync(GameState game, string playerId, int cardId)
   {
-    if (IsCurrentPlayer(game, playerId, out var thisPlayer))
+    if (IsActivePlayer(game, playerId, out var thisPlayer))
     {
       if (game.Phase.IsBuyPhase())
       {
@@ -106,7 +106,7 @@ public static class GameLogic
 
   public static async Task<GameState> PlayCardAsync(GameState game, string playerId, string cardInstanceId)
   {
-    if (IsCurrentPlayer(game, playerId, out var thisPlayer))
+    if (IsActivePlayer(game, playerId, out var thisPlayer))
     {
       if (HasCardInHand(thisPlayer, cardInstanceId, out var cardInstance))
       {
@@ -125,15 +125,17 @@ public static class GameLogic
             Resources = thisPlayer.Resources with { Actions = thisPlayer.Resources.Actions - (game.Phase == Phase.Action ? 1 : 0) },
           };
 
-          game = game with { Players = game.Players.Select(player => player.Id == newPlayer.Id ? newPlayer : player).ToArray() };
+          game = game with
+          {
+            Players = game.Players.Select(player => player.Id == newPlayer.Id ? newPlayer : player).ToArray(),
+            ResumeState = new PlayCardResumeState(cardInstance, 0, null)
+          };
 
-          game = game with { ResumeState = new PlayCardResumeState(cardInstance, 0, null) };
-
-          CardEffectHandler[] effectHandlers = [new SimpleCardEffectHandler(), new MoveCardsEffectHandler()];
+          CardEffectHandler[] effectHandlers = [new FluentEffectHandler()];
 
           for (int i = 0; i < cardInstance.Card.Effects.Length; i++)
           {
-            game = game with { ResumeState = game.ResumeState with { EffectIndex = i, EffectResumeState = null } };
+            game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
 
             foreach (var handler in effectHandlers)
             {
@@ -149,7 +151,7 @@ public static class GameLogic
             }
           }
 
-          game = game with { ResumeState = null };
+          return game with { ResumeState = null, ActivePlayerId = game.Players[game.CurrentPlayer].Id };
         }
       }
     }
@@ -165,7 +167,7 @@ public static class GameLogic
 
     game = game with { Players = [.. game.Players.Select(p => p.Id == playerId ? p with { ActiveFilter = null } : p)] };
 
-    CardEffectHandler[] effectHandlers = [new SimpleCardEffectHandler(), new MoveCardsEffectHandler()];
+    CardEffectHandler[] effectHandlers = [new FluentEffectHandler()];
 
     foreach (var handler in effectHandlers)
     {
@@ -197,7 +199,7 @@ public static class GameLogic
       }
     }
 
-    return game;
+    return game with { ActivePlayerId = game.Players[game.CurrentPlayer].Id };
   }
 
   private static PlayerState StartPlayerTurn(PlayerState player)
@@ -219,14 +221,12 @@ public static class GameLogic
   }
 
   private static PlayerState? GetPlayerById(GameState game, string playerId) => game.Players.FirstOrDefault(player => player.Id == playerId);
-  private static PlayerState GetCurrentPlayer(GameState game) => game.Players[game.CurrentPlayer];
 
-  private static bool IsCurrentPlayer(GameState game, string playerId, [NotNullWhen(true)] out PlayerState? player)
+  private static bool IsActivePlayer(GameState game, string playerId, [NotNullWhen(true)] out PlayerState? player)
   {
     var thisPlayer = GetPlayerById(game, playerId);
-    var currentPlayer = GetCurrentPlayer(game);
 
-    if (thisPlayer is not null && thisPlayer == currentPlayer)
+    if (thisPlayer is not null && playerId == game.ActivePlayerId)
     {
       player = thisPlayer;
       return true;
