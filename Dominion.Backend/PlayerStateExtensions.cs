@@ -28,8 +28,7 @@ public static class PlayerStateExtensions
       {
         if (discard.Count > 0)
         {
-          deck = [.. discard];
-          deck = deck.Shuffle().ToList();
+          deck = [.. discard.Shuffle()];
           discard = [];
           continue;
         }

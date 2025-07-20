@@ -136,7 +136,8 @@ public static class MasterCardData
           }
         }
         return state;
-      }).ThenSelect((_,_) => new PlayerSelectChoice { Filter = new CardFilter { From = Reveal, Types = [Action], ExactCount = 1 }, Prompt = "Select an action to play", IsForced = false, OnDecline = (state, choice, result, ctx) => state.MoveAllFromZone(Reveal, Discard, ctx.PlayerId)
+      }).ThenSelect((_,_) => new PlayerSelectChoice { Filter = new CardFilter { From = Reveal, Types = [Action], ExactCount = 1 }, Prompt = "Select an action to play", IsForced = false,
+        OnDecline = (state, choice, result, ctx) => state.MoveAllFromZone(Reveal, Discard, ctx.PlayerId)
       }).ThenIfAnySelected((state, choice, result, ctx) => GameLogic.PlayCard(state, ctx.PlayerId, result.SelectedCards[0].Id, Reveal, ignoreCostsAndPhases: true, afterCurrentEffect: true).Item1)]},
     new () { Id = 23, Name = "Bureaucrat", Cost = 4, Types = [Action, Attack], Effects = [
       Do((state, ctx) => state.GainCardFromSupply(CardIDs.Silver, to: Deck)),
@@ -149,7 +150,8 @@ public static class MasterCardData
     new () { Id = 25, Name = "Harbinger", Cost = 3, Types = [Action], Effects = [
       Do(DoActivePlayer(p => p.DrawCards(1).GainActions(1)))
       .Then((state, ctx) => state.MoveAllFromZone(Discard, PrivateReveal, ctx.PlayerId))
-      .ThenSelect((_, _) => new PlayerSelectChoice { Filter = new CardFilter { From = PrivateReveal, ExactCount = 1 }, Prompt = "Select a card to put on top of your deck", IsForced = false, OnDecline = (state, choice, result, ctx) => state.MoveAllFromZone(PrivateReveal, Discard, ctx.PlayerId) })
+      .ThenSelect((_, _) => new PlayerSelectChoice { Filter = new CardFilter { From = PrivateReveal, ExactCount = 1 }, Prompt = "Select a card to put on top of your deck", IsForced = false,
+        OnDecline = (state, choice, result, ctx) => state.MoveAllFromZone(PrivateReveal, Discard, ctx.PlayerId) })
       .MoveSelectedCardsTo(Deck)
       .MoveRevealedCardsTo(Discard, true)]},
     new () { Id = 26, Name = "Militia", Cost = 4, Types = [Action, Attack], Effects = [
@@ -176,7 +178,7 @@ public static class MasterCardData
         var actualResult = (PlayerCategorizeChoiceResult)result;
         var actualChoice = (PlayerCategorizeChoice)choice;
 
-        return actualResult.CategorizedCards.Aggregate(state, (acc, next) => next.Key == "Put Back" ? acc : acc.MoveBetweenZones(actualChoice.ZoneToCategorize, findTargetZone(next.Key), ctx.PlayerId, next.Value));
+        return actualResult.CategorizedCards.Aggregate(state, (stateAccumulator, next) => next.Key == "Put Back" ? stateAccumulator : stateAccumulator.MoveBetweenZones(actualChoice.ZoneToCategorize, findTargetZone(next.Key), ctx.PlayerId, next.Value));
 
         CardZone findTargetZone(string category) => category switch {
           "Trash" => Trash,

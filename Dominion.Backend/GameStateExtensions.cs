@@ -67,14 +67,14 @@ public static partial class GameStateExtensions
 
     return @this with
     {
-      Players = [.. @this.Players.Select(player => player.Id == playerId ? to switch {
+      Players = [.. @this.Players.Select(player => player.Id != playerId ? player : to switch {
         CardZone.Deck => player with { Deck = [.. cards, ..player.Deck]},
         CardZone.Discard => player with { Discard = [.. player.Discard, .. cards]},
         CardZone.Hand => player with { Hand = [.. player.Hand, .. cards]},
         CardZone.Play => player with { Play = [.. player.Play, .. cards]},
         CardZone.PrivateReveal => player with { PrivateReveal = [.. player.PrivateReveal, .. cards]},
         _ => player
-      } : player)]
+      })]
     };
   }
 
@@ -140,8 +140,7 @@ public static partial class GameStateExtensions
       {
         if (discard.Count > 0)
         {
-          deck = [.. discard];
-          deck = deck.Shuffle().ToList();
+          deck = [.. discard.Shuffle()];
           discard = [];
           continue;
         }
@@ -177,8 +176,7 @@ public static partial class GameStateExtensions
       {
         if (discard.Count > 0)
         {
-          deck = [.. discard];
-          deck = deck.Shuffle().ToList();
+          deck = [.. discard.Shuffle()];
           discard = [];
           continue;
         }
@@ -213,8 +211,7 @@ public static partial class GameStateExtensions
       {
         if (discard.Count > 0)
         {
-          deck = [.. discard];
-          deck = deck.Shuffle().ToList();
+          deck = [.. discard.Shuffle()];
           discard = [];
           continue;
         }

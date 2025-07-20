@@ -21,6 +21,7 @@ public static class GameLogic
       var shuffledDeck = player.Deck.Shuffle();
       return player with
       {
+        Index = i,
         Hand = [.. shuffledDeck.Take(5)],
         Deck = [.. shuffledDeck.Skip(5)],
         Resources = i == 0 ? new PlayerResources(1, 1, 0, 0, 0, 0) : PlayerResources.Empty
@@ -37,8 +38,8 @@ public static class GameLogic
       // Move all cards to each player's deck.
       game = game with { Players = [.. game.Players.Select(p => p with { Deck = [.. p.Deck, .. p.Discard, .. p.Hand, .. p.Play, .. p.PrivateReveal], Discard = [], Hand = [], Play = [], PrivateReveal = [] })] };
       var scores = CalculateScores(game);
-      var winners = DetermineWinners(game, scores);
-      GameResult result = new GameResult(winners, scores);
+      var winners = scores.GroupBy(kvp => kvp.Value).MaxBy(group => group.Key)!.Select(score => score.Key);
+      GameResult result = new GameResult([.. winners], scores);
       return game with { GameResult = result };
     }
     else
@@ -50,8 +51,8 @@ public static class GameLogic
       int whichPlayer(int i) => i == game.CurrentPlayer ? thisPlayer : i == nextPlayerIndex ? nextPlayer : otherPlayer;
       var newPlayers = game.Players.Select((player, i) => whichPlayer(i) switch
       {
-        nextPlayer => StartPlayerTurn(player),
         thisPlayer => EndPlayerTurn(player),
+        nextPlayer => StartPlayerTurn(player),
         _ => player
       }).ToArray();
 
@@ -59,24 +60,13 @@ public static class GameLogic
     }
   }
 
-  private static string[] DetermineWinners(GameState game, Dictionary<string, int> scores)
-  {
-    string[] playersYetToGo = game.Players
-      .Skip(game.CurrentPlayer + 1)
-      .Select(p => p.Id)
-      .ToArray();
-
-    return scores
-      .GroupBy(score => score.Value)
-      .MaxBy(group => group.Key)!
-      .GroupBy(score => playersYetToGo.Contains(score.Key) ? 1 : 0)
-      .MaxBy(group => group.Key)!
-      .Select(p => p.Key)
-      .ToArray();
-  }
-
   // Assumes all cards are back in deck at this point.
-  private static Dictionary<string, int> CalculateScores(GameState game) => game.Players.ToDictionary(p => p.Id, p => p.Deck.SumBy(c => c.Card.ValueFunc?.Invoke(game, p.Id) ?? c.Card.Value) + p.Resources.Points);
+  // .5 points for not going yet breaks one level of ties.
+  private static Dictionary<string, double> CalculateScores(GameState game) => game.Players.ToDictionary(
+    p => p.Id,
+    p => p.Deck.SumBy(c => c.Card.ValueFunc?.Invoke(game, p.Id) ?? c.Card.Value)
+      + p.Resources.Points
+      + (p.Index > game.CurrentPlayer ? .5 : 0));
 
   private static bool CheckForGameEnd(GameState game) => game.KingdomCards.Any(kc => kc.Card.Id == MasterCardData.CardIDs.Province && kc.Remaining == 0) || game.KingdomCards.Count(kc => kc.Remaining == 0) > 2;
 
@@ -134,12 +124,16 @@ public static class GameLogic
     {
       if (HasCardInZone(game, playerId, cardInstanceId, from, out var cardInstance))
       {
-        if (!ignoreCostsAndPhases && game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Treasure) && !cardInstance.Card.Types.Contains(CardType.Action))
+        if (!ignoreCostsAndPhases
+          && game.Phase == Phase.Action
+          && cardInstance.Card.Types.Contains(CardType.Treasure)
+          && !cardInstance.Card.Types.Contains(CardType.Action))
         {
           game = game with { Phase = Phase.BuyOrPlay };
         }
 
-        if (ignoreCostsAndPhases || (game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Action) && thisPlayer.Resources.Actions > 0)
+        if (ignoreCostsAndPhases
+          || (game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Action) && thisPlayer.Resources.Actions > 0)
           || (game.Phase == Phase.BuyOrPlay && cardInstance.Card.Types.Contains(CardType.Treasure)))
         {
           if (moveCard)

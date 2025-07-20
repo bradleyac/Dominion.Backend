@@ -8,7 +8,7 @@ public record CardPile(int CardId, int Count);
 public record CardInstanceDto(string InstanceId, int CardId);
 public record FullPlayerData(string PlayerId, CardInstanceDto[] Hand, int DeckCount, CardInstanceDto[] Discard, CardInstanceDto[] Play, CardInstanceDto[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice);
 public record PartialPlayerData(string PlayerId, int HandCount, int DeckCount, int DiscardCount, int? DiscardFaceUpCardId, CardInstanceDto[] Play, PlayerResources Resources);
-public record GameResult(string[] Winners, Dictionary<string, int> Scores);
+public record GameResult(string[] Winners, Dictionary<string, double> Scores);
 
 public static partial class GameStateExtensions
 {

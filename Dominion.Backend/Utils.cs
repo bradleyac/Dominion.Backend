@@ -33,7 +33,7 @@ public static class Utils
     T[] shuffled = [.. @this];
     for (int i = shuffled.Length - 1; i > 0; i--)
     {
-      var j = (int)Math.Floor(Random.Shared.NextSingle() * i);
+      var j = (int)Math.Floor(Random.Shared.NextSingle() * (i + 1));
       (shuffled[i], shuffled[j]) = (shuffled[j], shuffled[i]);
     }
     return shuffled;
