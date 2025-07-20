@@ -10,35 +10,33 @@ namespace Fluent;
 public static class Fluent
 {
   public static EffectSequence Do(EffectSequence.DoDelegate @do) => new EffectSequence(@do);
-  public static EffectSequence SelectCards(CardFilter filter) => new EffectSequence(filter);
+  public static EffectSequence SelectCards(EffectSequence.ThenSelectThunkDelegate choiceFunc) => new EffectSequence(choiceFunc);
+  public static EffectSequence Then(this EffectSequence @this, EffectSequence.DoDelegate @do) => @this.Add(@do);
   public static EffectSequence Then(this EffectSequence @this, EffectSequence.ThenDelegate then) => @this.Add(then);
+  public static EffectSequence ThenAfterSelect(this EffectSequence @this, Func<GameState, PlayerSelectChoice, PlayerSelectChoiceResult, EffectContext, GameState> then) => @this.Add((gameState, choice, result, context) => then(gameState, (PlayerSelectChoice)choice, (PlayerSelectChoiceResult)result, context));
   public static EffectSequence ThenSelect(this EffectSequence @this, EffectSequence.ThenSelectDelegate thenSelect) => @this.Add(thenSelect);
-  public static EffectSequence ThenSelect(this EffectSequence @this, CardFilter filter) => @this.Add(filter);
+  public static EffectSequence ThenSelect(this EffectSequence @this, EffectSequence.ThenSelectThunkDelegate choiceFunc) => @this.Add(choiceFunc);
+
+  public static EffectSequence ThenCategorize(this EffectSequence @this, EffectSequence.DoCategorizeDelegate categorizeFunc) => @this.Add(categorizeFunc);
+  public static EffectSequence ThenCategorize(this EffectSequence @this, EffectSequence.ThenCategorizeDelegate categorizeFunc) => @this.Add(categorizeFunc);
+
+  public static EffectSequence ThenArrange(this EffectSequence @this, EffectSequence.DoArrangeDelegate arrangeFunc) => @this.Add(arrangeFunc);
+  public static EffectSequence ThenArrange(this EffectSequence @this, EffectSequence.ThenArrangeDelegate arrangeFunc) => @this.Add(arrangeFunc);
+
+  public static LoopEffect Loop(Func<GameState, EffectContext, bool> loopCondition, EffectSequence effect) => new LoopEffect { LoopCondition = loopCondition, Effect = effect };
   public static TargetedEffect ForEach(EffectTarget effectTarget, EffectSequence effect) => new TargetedEffect { Target = effectTarget, Effect = effect };
-
-  public static EffectSequence Artisan = SelectCards(new CardFilter { From = CardZone.Supply, MaxCost = 5 })
-    .Then((state, filter, cards, ctx) => state.MoveBetweenZones(filter.From, CardZone.Hand, ctx.PlayerId, cards))
-    .ThenSelect(new CardFilter { From = CardZone.Hand, MinCount = 1, MaxCount = 1 })
-    .Then((state, filter, cards, ctx) => state.MoveBetweenZones(filter.From, CardZone.Deck, ctx.PlayerId, cards));
-
-  public static EffectSequence Forge = SelectCards(new CardFilter { From = CardZone.Hand })
-    .Then((state, filter, cards, ctx) => state.MoveBetweenZones(filter.From, CardZone.Trash, ctx.PlayerId, cards))
-    .ThenSelect((state, filter, cards, ctx) => new CardFilter { From = CardZone.Supply, MinCost = cards.Aggregate(0, (acc, card) => acc + card.Card.Cost), MaxCost = cards.Aggregate(0, (acc, card) => acc + card.Card.Cost) })
-    .Then((state, filter, cards, ctx) => state.MoveBetweenZones(filter.From, CardZone.Discard, ctx.PlayerId, cards));
-
-  public static EffectSequence Mint = SelectCards(new CardFilter { From = CardZone.Hand, Types = [CardType.Treasure], })
-    .Then((state, filter, cards, ctx) => state.MoveBetweenZones(CardZone.Supply, CardZone.Discard, ctx.PlayerId, cards));
-
-  public static TargetedEffect Bandit = ForEach(EffectTarget.Opps, Do((state, ctx) => state.MoveBetweenZones(CardZone.Deck, CardZone.Reveal, ctx.PlayerId, state.GetPlayer(ctx.PlayerId).Deck.Take(2).ToArray()))
-    .ThenSelect(new CardFilter { Types = [CardType.Treasure], From = CardZone.Reveal, NotId = MasterCardData.CardIDs.Copper })
-    .Then((state, filter, cards, ctx) => state
-      .MoveBetweenZones(filter.From, CardZone.Trash, ctx.PlayerId, cards)
-      .MoveAllFromZone(filter.From, CardZone.Discard, ctx.PlayerId)));
 }
 
 public record EffectContext
 {
-  public required string PlayerId { get; set; }
+  public required string PlayerId { get; init; }
+}
+
+public record PendingEffect
+{
+  public string Id { get; } = Guid.NewGuid().ToString();
+  public required string OwnerId { get; init; }
+  public required FluentEffect[] Effects { get; init; }
 }
 
 public abstract class FluentEffect { };
@@ -49,22 +47,39 @@ public class TargetedEffect : FluentEffect
   public required EffectSequence Effect { get; set; }
 }
 
+public class LoopEffect : FluentEffect
+{
+  public required Func<GameState, EffectContext, bool> LoopCondition { get; set; }
+  public required EffectSequence Effect { get; set; }
+}
+
 public class EffectSequence : FluentEffect
 {
   public delegate GameState DoDelegate(GameState gameState, EffectContext context);
-  public delegate GameState ThenDelegate(GameState gameState, CardFilter filter, CardInstance[] cards, EffectContext context);
-  public delegate CardFilter ThenSelectDelegate(GameState gameState, CardFilter filter, CardInstance[] cards, EffectContext context);
+  public delegate GameState ThenDelegate(GameState gameState, PlayerChoice choice, PlayerChoiceResult result, EffectContext context);
+  public delegate GameState ThenAfterSelectDelegate(GameState gameState, PlayerSelectChoice choice, PlayerSelectChoiceResult result, EffectContext context);
+  public delegate PlayerSelectChoice ThenSelectDelegate(GameState gameState, PlayerChoice choice, PlayerChoiceResult result, EffectContext context);
+  public delegate PlayerSelectChoice ThenSelectThunkDelegate(GameState gameState, EffectContext context);
+  public delegate PlayerCategorizeChoice DoCategorizeDelegate(GameState gameState, EffectContext context);
+  public delegate PlayerCategorizeChoice ThenCategorizeDelegate(GameState gameState, PlayerChoice choice, PlayerChoiceResult result, EffectContext context);
+  public delegate PlayerArrangeChoice DoArrangeDelegate(GameState gameState, EffectContext context);
+  public delegate PlayerArrangeChoice ThenArrangeDelegate(GameState gameState, PlayerChoice choice, PlayerChoiceResult result, EffectContext context);
 
   public List<object> Effects { get; set; } = [];
 
-  public EffectSequence(CardFilter filter)
+  public EffectSequence(PlayerChoice choice)
   {
-    Effects.Add(filter);
+    Effects.Add(choice);
   }
 
   public EffectSequence(DoDelegate @do)
   {
     Effects.Add(@do);
+  }
+
+  public EffectSequence(ThenSelectThunkDelegate choiceFunc)
+  {
+    Effects.Add(choiceFunc);
   }
 
   public EffectSequence Add(ThenDelegate then)
@@ -79,9 +94,40 @@ public class EffectSequence : FluentEffect
     return this;
   }
 
-  public EffectSequence Add(CardFilter filter)
+  public EffectSequence Add(ThenSelectThunkDelegate thenSelect)
   {
-    Effects.Add(filter);
+    Effects.Add(thenSelect);
+    return this;
+  }
+
+  public EffectSequence Add(DoCategorizeDelegate thenCategorize)
+  {
+    Effects.Add(thenCategorize);
+    return this;
+  }
+
+  public EffectSequence Add(ThenCategorizeDelegate thenCategorize)
+  {
+    Effects.Add(thenCategorize);
+    return this;
+  }
+
+  public EffectSequence Add(DoArrangeDelegate thenArrange)
+  {
+    Effects.Add(thenArrange);
+    return this;
+  }
+
+  public EffectSequence Add(ThenArrangeDelegate thenArrange)
+  {
+    Effects.Add(thenArrange);
+    return this;
+  }
+
+
+  public EffectSequence Add(PlayerChoice choice)
+  {
+    Effects.Add(choice);
     return this;
   }
 

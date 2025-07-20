@@ -1,12 +1,15 @@
 using System.Data;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection.Metadata.Ecma335;
+using Fluent;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Dominion.Backend;
 
 public static class GameLogic
 {
-  public static async Task<GameState> StartGameAsync(GameState game)
+  public static GameState StartGame(GameState game)
   {
     if (game.GameStarted)
     {
@@ -27,45 +30,66 @@ public static class GameLogic
     return game with { GameStarted = true, Players = players, CurrentPlayer = 0, ActivePlayerId = players[0].Id };
   }
 
-  public static async Task<GameState> EndTurnAsync(GameState game)
+  public static GameState EndTurn(GameState game)
   {
-    int nextPlayerIndex = game.CurrentPlayer + 1;
-    int nextTurn = game.CurrentTurn;
-    if (nextPlayerIndex >= game.Players.Length)
+    if (CheckForGameEnd(game))
     {
-      nextPlayerIndex = 0;
-      nextTurn = game.CurrentTurn + 1;
+      // Move all cards to each player's deck.
+      game = game with { Players = [.. game.Players.Select(p => p with { Deck = [.. p.Deck, .. p.Discard, .. p.Hand, .. p.Play, .. p.PrivateReveal], Discard = [], Hand = [], Play = [], PrivateReveal = [] })] };
+      var scores = CalculateScores(game);
+      var winners = DetermineWinners(game, scores);
+      GameResult result = new GameResult(winners, scores);
+      return game with { GameResult = result };
     }
-
-    var players = game.Players.Select((player, i) =>
+    else
     {
-      if (i == game.CurrentPlayer)
-      {
-        return EndPlayerTurn(player);
-      }
-      else if (i == nextPlayerIndex)
-      {
-        return StartPlayerTurn(player);
-      }
-      else
-      {
-        return player;
-      }
-    }).ToArray();
+      int nextPlayerIndex = (game.CurrentPlayer + 1) % game.Players.Length;
+      int nextTurn = game.CurrentTurn + (nextPlayerIndex == 0 ? 1 : 0);
 
-    return game with { Phase = Phase.Action, Players = players, CurrentTurn = nextTurn, CurrentPlayer = nextPlayerIndex, ActivePlayerId = players[nextPlayerIndex].Id };
+      const int nextPlayer = 1, thisPlayer = 0, otherPlayer = -1;
+      int whichPlayer(int i) => i == game.CurrentPlayer ? thisPlayer : i == nextPlayerIndex ? nextPlayer : otherPlayer;
+      var newPlayers = game.Players.Select((player, i) => whichPlayer(i) switch
+      {
+        nextPlayer => StartPlayerTurn(player),
+        thisPlayer => EndPlayerTurn(player),
+        _ => player
+      }).ToArray();
+
+      return game with { Phase = Phase.Action, Players = newPlayers, CurrentTurn = nextTurn, CurrentPlayer = nextPlayerIndex, ActivePlayerId = newPlayers[nextPlayerIndex].Id };
+    }
   }
 
-  public static async Task<GameState> EndActionPhaseAsync(GameState game, string playerId)
+  private static string[] DetermineWinners(GameState game, Dictionary<string, int> scores)
   {
-    if (game.Players[game.CurrentPlayer].Id == playerId && game.Phase == Phase.Action)
+    string[] playersYetToGo = game.Players
+      .Skip(game.CurrentPlayer + 1)
+      .Select(p => p.Id)
+      .ToArray();
+
+    return scores
+      .GroupBy(score => score.Value)
+      .MaxBy(group => group.Key)!
+      .GroupBy(score => playersYetToGo.Contains(score.Key) ? 1 : 0)
+      .MaxBy(group => group.Key)!
+      .Select(p => p.Key)
+      .ToArray();
+  }
+
+  // Assumes all cards are back in deck at this point.
+  private static Dictionary<string, int> CalculateScores(GameState game) => game.Players.ToDictionary(p => p.Id, p => p.Deck.SumBy(c => c.Card.ValueFunc?.Invoke(game, p.Id) ?? c.Card.Value) + p.Resources.Points);
+
+  private static bool CheckForGameEnd(GameState game) => game.KingdomCards.Any(kc => kc.Card.Id == MasterCardData.CardIDs.Province && kc.Remaining == 0) || game.KingdomCards.Count(kc => kc.Remaining == 0) > 2;
+
+  public static GameState EndActionPhase(GameState game, string playerId)
+  {
+    if (game.Players[game.CurrentPlayer].Id == playerId && game.ActivePlayerId == playerId && game.Phase == Phase.Action)
     {
       return game with { Phase = Phase.BuyOrPlay };
     }
     return game;
   }
 
-  public static async Task<GameState> BuyCardAsync(GameState game, string playerId, int cardId)
+  public static GameState BuyCard(GameState game, string playerId, int cardId)
   {
     if (IsActivePlayer(game, playerId, out var thisPlayer))
     {
@@ -95,7 +119,7 @@ public static class GameLogic
 
           if (newPlayer.Resources.Buys == 0)
           {
-            return await EndTurnAsync(game);
+            return EndTurn(game);
           }
         }
       }
@@ -104,137 +128,140 @@ public static class GameLogic
     return game;
   }
 
-  public static async Task<GameState> PlayCardAsync(GameState game, string playerId, string cardInstanceId)
+  public static (GameState, bool Updated) PlayCard(GameState game, string playerId, string cardInstanceId, CardZone from = CardZone.Hand, bool ignoreCostsAndPhases = false, bool moveCard = true, int count = 1, bool afterCurrentEffect = false)
   {
     if (IsActivePlayer(game, playerId, out var thisPlayer))
     {
-      if (HasCardInHand(thisPlayer, cardInstanceId, out var cardInstance))
+      if (HasCardInZone(game, playerId, cardInstanceId, from, out var cardInstance))
       {
-        if (game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Treasure) && !cardInstance.Card.Types.Contains(CardType.Action))
+        if (!ignoreCostsAndPhases && game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Treasure) && !cardInstance.Card.Types.Contains(CardType.Action))
         {
           game = game with { Phase = Phase.BuyOrPlay };
         }
 
-        if ((game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Action) && thisPlayer.Resources.Actions > 0)
+        if (ignoreCostsAndPhases || (game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Action) && thisPlayer.Resources.Actions > 0)
           || (game.Phase == Phase.BuyOrPlay && cardInstance.Card.Types.Contains(CardType.Treasure)))
         {
-          var newPlayer = thisPlayer with
+          if (moveCard)
           {
-            Hand = [.. thisPlayer.Hand.Where(card => card.Id != cardInstanceId)],
-            Play = [.. thisPlayer.Play, cardInstance],
-            Resources = thisPlayer.Resources with { Actions = thisPlayer.Resources.Actions - (game.Phase == Phase.Action ? 1 : 0) },
-          };
-
-          game = game with
-          {
-            Players = game.Players.Select(player => player.Id == newPlayer.Id ? newPlayer : player).ToArray(),
-            ResumeState = new PlayCardResumeState(cardInstance, 0, null)
-          };
-
-          CardEffectHandler[] effectHandlers = [new FluentEffectHandler()];
-
-          for (int i = 0; i < cardInstance.Card.Effects.Length; i++)
-          {
-            game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
-
-            foreach (var handler in effectHandlers)
-            {
-              var effect = cardInstance.Card.Effects[i];
-              if (handler.CanHandleEffect(effect))
-              {
-                (game, bool completed) = handler.HandleEffect(game, playerId, effect);
-                if (!completed)
-                {
-                  return game;
-                }
-              }
-            }
+            game = game.MoveBetweenZones(from, CardZone.Play, playerId, [cardInstance]);
           }
 
-          return game with { ResumeState = null, ActivePlayerId = game.Players[game.CurrentPlayer].Id };
+          if (!ignoreCostsAndPhases && game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Action))
+          {
+            game = game.UpdatePlayer(playerId, player => player with
+            {
+              Resources = thisPlayer.Resources with { Actions = thisPlayer.Resources.Actions - (game.Phase == Phase.Action ? 1 : 0) }
+            });
+          }
+
+          game = game with { EffectStack = [.. game.EffectStack, .. Enumerable.Range(0, count).Select(i => new PendingEffect { Effects = cardInstance.Card.Effects, OwnerId = playerId })] };
+          return (afterCurrentEffect ? game : ProcessEffectStack(game), true);
         }
       }
     }
 
-    return game;
+    return (game, false);
   }
 
-  public static async Task<GameState> ResumePlayingCard(GameState game, string playerId, ChosenCards chosenCards)
+  public static GameState ProcessEffectStack(GameState game)
   {
-    var resumeState = game.ResumeState;
-    var cardInstance = resumeState!.CardInstance;
-    var resumedEffect = cardInstance.Card.Effects[resumeState.EffectIndex];
+    PendingEffect? currentEffect;
 
-    game = game with { Players = [.. game.Players.Select(p => p.Id == playerId ? p with { ActiveFilter = null } : p)] };
-
-    CardEffectHandler[] effectHandlers = [new FluentEffectHandler()];
-
-    foreach (var handler in effectHandlers)
+    while ((currentEffect = game.EffectStack.LastOrDefault()) is not null)
     {
-      if (handler.CanHandleEffect(resumedEffect))
+      game = game with
       {
-        (game, bool completed) = handler.ResumeHandleEffect(game, playerId, resumedEffect, chosenCards);
+        ResumeState = new PlayCardResumeState(0, null)
+      };
+
+      for (int i = 0; i < currentEffect.Effects.Length; i++)
+      {
+        game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
+        (game, bool completed) = FluentEffectHandler.HandleEffect(game, currentEffect.OwnerId, currentEffect.Effects[i]);
         if (!completed)
         {
           return game;
         }
       }
+
+      // Remove the effect we just processed. It might not be at the top of the stack anymore.
+      game = game with { EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)] };
     }
 
-    for (int i = resumeState.EffectIndex + 1; i < cardInstance.Card.Effects.Length; i++)
-    {
-      game = game with { ResumeState = game.ResumeState with { EffectIndex = i, EffectResumeState = null } };
+    return game with { ResumeState = null, ActivePlayerId = game.Players[game.CurrentPlayer].Id };
+  }
 
-      foreach (var handler in effectHandlers)
+
+  public static GameState ResumeProcessEffectStack(GameState game, string playerId, PlayerChoice lastChoice, PlayerChoiceResult lastResult)
+  {
+    PendingEffect? currentEffect = game.EffectStack.LastOrDefault();
+
+    if (currentEffect is null) return game;
+
+    var resumeState = game.ResumeState;
+    var resumedEffect = currentEffect.Effects[resumeState.EffectIndex];
+
+    game = game with { Players = [.. game.Players.Select(p => p with { ActiveChoice = null })] };
+
+    (game, bool completed) = FluentEffectHandler.ResumeHandleEffect(game, playerId, resumedEffect, lastResult);
+    if (!completed)
+    {
+      return game;
+    }
+
+    for (int i = resumeState.EffectIndex + 1; i < currentEffect.Effects.Length; i++)
+    {
+      game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
+      (game, completed) = FluentEffectHandler.HandleEffect(game, currentEffect.OwnerId, currentEffect.Effects[i]);
+      if (!completed)
       {
-        var effect = cardInstance.Card.Effects[i];
-        if (handler.CanHandleEffect(effect))
-        {
-          (game, bool completed) = handler.HandleEffect(game, playerId, effect);
-          if (!completed)
-          {
-            return game;
-          }
-        }
+        return game;
       }
     }
 
-    return game with { ActivePlayerId = game.Players[game.CurrentPlayer].Id };
-  }
+    // Remove the effect we just processed. It might not be at the top of the stack anymore.
+    game = game with { EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)] };
 
-  private static PlayerState StartPlayerTurn(PlayerState player)
-  {
-    return player with { Resources = PlayerResources.NewTurn(player.Resources) };
-  }
-
-  private static PlayerState EndPlayerTurn(PlayerState player)
-  {
-    player = player with
+    while ((currentEffect = game.EffectStack.LastOrDefault()) is not null)
     {
-      Discard = [.. player.Discard, .. player.Hand, .. player.Play],
-      Play = [],
-      Hand = [],
-      Resources = PlayerResources.EndTurn(player.Resources)
-    };
-    player = Utils.DrawCards(player, 5);
-    return player;
-  }
+      game = game with
+      {
+        ResumeState = new PlayCardResumeState(0, null)
+      };
 
-  private static PlayerState? GetPlayerById(GameState game, string playerId) => game.Players.FirstOrDefault(player => player.Id == playerId);
+      for (int i = 0; i < currentEffect.Effects.Length; i++)
+      {
+        game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
 
-  private static bool IsActivePlayer(GameState game, string playerId, [NotNullWhen(true)] out PlayerState? player)
-  {
-    var thisPlayer = GetPlayerById(game, playerId);
+        (game, completed) = FluentEffectHandler.HandleEffect(game, currentEffect.OwnerId, currentEffect.Effects[i]);
+        if (!completed)
+        {
+          return game;
+        }
+      }
 
-    if (thisPlayer is not null && playerId == game.ActivePlayerId)
-    {
-      player = thisPlayer;
-      return true;
+      // TODO: This feels clumsy.
+      // Remove the effect we just processed. It might not be at the top of the stack anymore.
+      game = game with { EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)] };
     }
 
-    player = null;
-    return false;
+    return game with { ResumeState = null, ActivePlayerId = game.Players[game.CurrentPlayer].Id };
   }
 
-  private static bool HasCardInHand(PlayerState player, string cardInstanceId, [NotNullWhen(true)] out CardInstance? cardInstance) => (cardInstance = player.Hand.FirstOrDefault(card => card.Id == cardInstanceId)) is not null;
+  private static PlayerState StartPlayerTurn(PlayerState player) => player with { Resources = PlayerResources.NewTurn(player.Resources) };
+
+  private static PlayerState EndPlayerTurn(PlayerState player) => (player with
+  {
+    Discard = [.. player.Discard, .. player.Hand, .. player.Play],
+    Play = [],
+    Hand = [],
+    Resources = PlayerResources.EndTurn(player.Resources)
+  }).DrawCards(5);
+
+  private static bool IsActivePlayer(GameState game, string playerId, [NotNullWhen(true)] out PlayerState? player)
+    => (player = game.ActivePlayerId == playerId && game.GetPlayer(playerId) is var p ? p : null) is not null;
+
+  private static bool HasCardInZone(GameState game, string playerId, string cardInstanceId, CardZone from, [NotNullWhen(true)] out CardInstance? cardInstance)
+    => (cardInstance = game.CardsInZone(from, playerId).FirstOrDefault(card => card.Id == cardInstanceId)) is not null;
 }

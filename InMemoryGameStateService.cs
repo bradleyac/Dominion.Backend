@@ -4,9 +4,11 @@ namespace Dominion.Backend;
 
 public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) : IGameStateService
 {
+  private const int UndoCount = 20;
   private readonly ILogger<InMemoryGameStateService> _logger = logger;
   // GameId to GameState map
   private readonly ConcurrentDictionary<string, GameState> _games = new();
+  private readonly ConcurrentDictionary<(string GameId, string PlayerId), GameState[]> _undoTargets = new();
   // PlayerId to GameId map
   private readonly ConcurrentDictionary<string, string> _playerGameMap = new();
 
@@ -32,10 +34,10 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
     _playerGameMap[playerId] = gameId;
   }
 
-  public Task<GameState?> GetGameAsync(string gameId)
+  public Task<GameState> GetGameAsync(string gameId)
   {
     _games.TryGetValue(gameId, out var game);
-    return Task.FromResult(game);
+    return Task.FromResult(game ?? throw new InvalidOperationException($"Game {gameId} not found"));
   }
 
   public Task<string?> GetPlayerGameIdAsync(string playerId)
@@ -46,12 +48,10 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
 
   public Task RemoveGameAsync(string gameId)
   {
-    var playersInGame = _playerGameMap.Where(kvp => kvp.Value == gameId).Select(kvp => kvp.Key);
-    foreach (var player in playersInGame)
-    {
-      _playerGameMap.Remove(player, out _);
-    }
     _games.Remove(gameId, out _);
+    _undoTargets.RemoveIf(key => key.GameId == gameId);
+    var playersInGame = _playerGameMap.Where(kvp => kvp.Value == gameId).Select(kvp => kvp.Key).ToArray();
+    _playerGameMap.RemoveIf(key => playersInGame.Contains(key));
     return Task.CompletedTask;
   }
 
@@ -61,9 +61,41 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
     return Task.CompletedTask;
   }
 
-  public Task UpdateGameAsync(GameState game)
+  public async Task UndoAsync(string playerId, string gameId)
   {
-    _games[game.GameId] = game;
+    if (_games.TryGetValue(gameId, out var game))
+    {
+      if (_undoTargets.TryGetValue((gameId, playerId), out var targets))
+      {
+        if (targets.Any())
+        {
+          _undoTargets[(gameId, playerId)] = [.. targets.SkipLast(1)];
+          await UpdateGameAsync(targets.Last(), addUndoTarget: false);
+        }
+      }
+    }
+  }
+
+  public Task UpdateGameAsync(GameState newGame, bool addUndoTarget = true)
+  {
+    var oldGame = _games[newGame.GameId];
+
+    if (addUndoTarget && oldGame is not null)
+    {
+      if (oldGame.ActivePlayerId is not null or "")
+      {
+        if (_undoTargets.TryGetValue((oldGame.GameId, oldGame.ActivePlayerId), out var gameStates))
+        {
+          _undoTargets[(oldGame.GameId, oldGame.ActivePlayerId)] = [.. gameStates.TakeLast(UndoCount - 1), oldGame];
+        }
+        else
+        {
+          _undoTargets[(oldGame.GameId, oldGame.ActivePlayerId)] = [oldGame];
+        }
+      }
+    }
+
+    _games[newGame.GameId] = newGame;
     return Task.CompletedTask;
   }
 

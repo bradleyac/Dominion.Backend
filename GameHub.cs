@@ -1,6 +1,4 @@
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.VisualBasic;
 
 namespace Dominion.Backend;
 
@@ -33,9 +31,9 @@ public class GameHub(IGameStateService gameService) : Hub
 
     var game = await _gameService.GetGameAsync(gameId);
 
-    game = await GameLogic.StartGameAsync(game);
+    game = GameLogic.StartGame(game);
 
-    await _gameService.UpdateGameAsync(game);
+    await _gameService.UpdateGameAsync(game, addUndoTarget: false);
 
     await UpdateAllAsync(gameId);
   }
@@ -50,11 +48,14 @@ public class GameHub(IGameStateService gameService) : Hub
   {
     var game = await _gameService.GetGameAsync(gameId);
 
-    var newGameState = await GameLogic.PlayCardAsync(game, playerId, cardInstanceId);
+    var (newGameState, played) = GameLogic.PlayCard(game, playerId, cardInstanceId);
 
-    await _gameService.UpdateGameAsync(newGameState);
+    if (played)
+    {
+      await _gameService.UpdateGameAsync(newGameState);
 
-    await UpdateAllAsync(gameId);
+      await UpdateAllAsync(gameId);
+    }
   }
 
   public async Task EndTurnAsync(string gameId, string playerId)
@@ -66,7 +67,7 @@ public class GameHub(IGameStateService gameService) : Hub
       return;
     }
 
-    var newGameState = await GameLogic.EndTurnAsync(game);
+    var newGameState = GameLogic.EndTurn(game);
 
     await _gameService.UpdateGameAsync(newGameState);
 
@@ -82,7 +83,7 @@ public class GameHub(IGameStateService gameService) : Hub
       return;
     }
 
-    var newGameState = await GameLogic.BuyCardAsync(game, playerId, cardId);
+    var newGameState = GameLogic.BuyCard(game, playerId, cardId);
 
     await _gameService.UpdateGameAsync(newGameState);
 
@@ -93,14 +94,14 @@ public class GameHub(IGameStateService gameService) : Hub
   {
     var game = await _gameService.GetGameAsync(gameId);
 
-    var newGameState = await GameLogic.EndActionPhaseAsync(game, playerId);
+    var newGameState = GameLogic.EndActionPhase(game, playerId);
 
     await _gameService.UpdateGameAsync(newGameState);
 
     await UpdateAllAsync(gameId);
   }
 
-  public async Task SubmitCardInstanceChoicesAsync(string gameId, string playerId, string[] cardInstanceIds)
+  public async Task SubmitCardInstanceChoicesAsync(string gameId, string playerId, string choiceId, string[] cardInstanceIds)
   {
     var game = await _gameService.GetGameAsync(gameId);
 
@@ -109,24 +110,33 @@ public class GameHub(IGameStateService gameService) : Hub
       // Not the right player.
       return;
     }
-    // TODO (somewhere): Validate choices
 
     var player = game.GetPlayer(playerId);
 
-    ChosenCards chosenCards = new ChosenCards
+    if (player.ActiveChoice?.Id != choiceId)
     {
-      CardInstances = [.. cardInstanceIds.Select(cardInstanceId => CardInstance.GetCardInstance(playerId, cardInstanceId, player.ActiveFilter.From, game))],
-      From = player.ActiveFilter.From
+      // Old choice.
+      return;
+    }
+
+    PlayerChoiceResult? choiceResult = player.ActiveChoice switch
+    {
+      PlayerSelectChoice selectChoice => new PlayerSelectChoiceResult { SelectedCards = [.. cardInstanceIds.Select(cardInstanceId => CardInstance.GetCardInstance(playerId, cardInstanceId, selectChoice.Filter.From, game))] },
+      PlayerArrangeChoice arrangeChoice => new PlayerArrangeChoiceResult { ArrangedCards = [.. cardInstanceIds.Select(cardInstanceId => CardInstance.GetCardInstance(playerId, cardInstanceId, arrangeChoice.ZoneToArrange, game))] },
+      _ => null
     };
 
-    var newGameState = await GameLogic.ResumePlayingCard(game, playerId, chosenCards);
+    if (choiceResult is not null)
+    {
+      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, choiceResult);
 
-    await _gameService.UpdateGameAsync(newGameState);
+      await _gameService.UpdateGameAsync(newGameState);
 
-    await UpdateAllAsync(gameId);
+      await UpdateAllAsync(gameId);
+    }
   }
 
-  public async Task SubmitCardChoicesAsync(string gameId, string playerId, int[] cardIds)
+  public async Task SubmitCardChoicesAsync(string gameId, string playerId, string choiceId, int[] cardIds)
   {
     var game = await _gameService.GetGameAsync(gameId);
 
@@ -135,20 +145,106 @@ public class GameHub(IGameStateService gameService) : Hub
       // Not the right player.
       return;
     }
-    // TODO (somewhere): Validate choices
 
     var player = game.GetPlayer(playerId);
 
-    ChosenCards chosenCards = new ChosenCards
+    if (player.ActiveChoice?.Id != choiceId)
     {
-      CardInstances = [.. cardIds.Select(CardInstance.CreateByCardId)],
-      From = player.ActiveFilter.From
-    };
+      // Old choice.
+      return;
+    }
 
-    var newGameState = await GameLogic.ResumePlayingCard(game, playerId, chosenCards);
+    if (player.ActiveChoice is PlayerSelectChoice selectChoice)
+    {
+      // TODO (somewhere): Validate choices
 
-    await _gameService.UpdateGameAsync(newGameState);
+      PlayerSelectChoiceResult result = new PlayerSelectChoiceResult
+      {
+        SelectedCards = [.. cardIds.Select(CardInstance.CreateByCardId)],
+      };
 
+      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, result);
+
+      await _gameService.UpdateGameAsync(newGameState);
+
+      await UpdateAllAsync(gameId);
+    }
+  }
+
+  public async Task SubmitCategorizationAsync(string gameId, string playerId, string choiceId, Dictionary<string, string[]> categorizations)
+  {
+    var game = await _gameService.GetGameAsync(gameId);
+
+    if (game?.ResumeState?.EffectResumeState is null || game.ResumeState.EffectResumeState.PlayerIds[game.ResumeState.EffectResumeState.PlayerIndex] != playerId)
+    {
+      // Not the right player.
+      return;
+    }
+
+    var player = game.GetPlayer(playerId);
+
+    if (player.ActiveChoice?.Id != choiceId)
+    {
+      // Old choice.
+      return;
+    }
+
+    if (player.ActiveChoice is PlayerCategorizeChoice categorizeChoice)
+    {
+      // TODO (somewhere): Validate choices
+
+      PlayerCategorizeChoiceResult result = new PlayerCategorizeChoiceResult
+      {
+        CategorizedCards = categorizations.Select(kvp => KeyValuePair.Create(kvp.Key, kvp.Value.Select(id => CardInstance.GetCardInstance(playerId, id, categorizeChoice.ZoneToCategorize, game)).ToArray())).ToDictionary(),
+      };
+
+      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, result);
+
+      await _gameService.UpdateGameAsync(newGameState);
+
+      await UpdateAllAsync(gameId);
+    }
+  }
+
+  public async Task DeclineChoiceAsync(string gameId, string playerId, string choiceId)
+  {
+    var game = await _gameService.GetGameAsync(gameId);
+
+    if (game?.ResumeState?.EffectResumeState?.PlayerIds[game.ResumeState.EffectResumeState.PlayerIndex] != playerId)
+    {
+      // Not the right player.
+      return;
+    }
+
+    var player = game.GetPlayer(playerId);
+
+    if (player.ActiveChoice?.Id != choiceId)
+    {
+      // Old choice.
+      return;
+    }
+
+    if (player.ActiveChoice is not null && !player.ActiveChoice.IsForced)
+    {
+      // TODO (somewhere): Validate choices
+
+      var result = new PlayerSelectChoiceResult
+      {
+        SelectedCards = [],
+        IsDeclined = true,
+      };
+
+      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, result);
+
+      await _gameService.UpdateGameAsync(newGameState);
+
+      await UpdateAllAsync(gameId);
+    }
+  }
+
+  public async Task UndoAsync(string gameId, string playerId)
+  {
+    await _gameService.UndoAsync(playerId, gameId);
     await UpdateAllAsync(gameId);
   }
 
@@ -159,6 +255,11 @@ public class GameHub(IGameStateService gameService) : Hub
     foreach (var playerId in await _gameService.GetPlayersInGameAsync(gameId))
     {
       await Clients.Group(playerId).SendAsync("stateUpdated", game.ToPlayerGameStateViewModel(playerId));
+    }
+
+    if (game.GameResult is not null)
+    {
+      await _gameService.RemoveGameAsync(gameId);
     }
   }
 

@@ -7,8 +7,8 @@ using Microsoft.OpenApi.Services;
 
 namespace Dominion.Backend;
 
-public record GameState(string GameId, bool GameStarted, CardPileState[] KingdomCards, PlayerState[] Players, CardInstance[] Trash, CardInstance[] Reveal, int CurrentTurn, int CurrentPlayer, string? ActivePlayerId, Phase Phase, string[] Log, PlayCardResumeState? ResumeState, Dictionary<string, int> StoredValues);
-public record PlayerState(string Id, CardInstance[] Hand, CardInstance[] Deck, CardInstance[] Discard, CardInstance[] Play, CardInstance[] PrivateReveal, PlayerResources Resources, CardFilter? ActiveFilter);
+public record GameState(string GameId, bool GameStarted, GameResult? GameResult, CardPileState[] KingdomCards, PlayerState[] Players, CardInstance[] Trash, CardInstance[] Reveal, int CurrentTurn, int CurrentPlayer, string? ActivePlayerId, Phase Phase, string[] Log, PlayCardResumeState? ResumeState, PendingEffect[] EffectStack);
+public record PlayerState(string Id, CardInstance[] Hand, CardInstance[] Deck, CardInstance[] Discard, CardInstance[] Play, CardInstance[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice);
 public record PlayerResources(int Actions, int Buys, int Coins, int Villagers, int Coffers, int Points)
 {
   public static readonly PlayerResources Empty = new PlayerResources(0, 0, 0, 0, 0, 0);
@@ -23,42 +23,44 @@ public class CardInstance(CardData card)
   public CardData Card { get; set; } = card;
 }
 public record CardPileState(CardData Card, int Remaining);
-public record CardData(int Id, string Name, int Cost, int? Value, CardType[] Types, FluentEffect[] Effects);
-
-[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
-[JsonDerivedType(typeof(MoveCardsEffect), "move")]
-[JsonDerivedType(typeof(SimpleEffect), "simple")]
-public abstract class LegacyCardEffect { }
-public class SimpleEffect : LegacyCardEffect { public required string Effect { get; set; } }
-public class MoveCardsEffect : LegacyCardEffect
+public record CardData
 {
-  public required EffectTarget Target { get; set; }
-  public required CardZone To { get; set; }
-  public required CardFilter Filter { get; set; }
-}
-
-[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
-[JsonSerializable(typeof(SelectedCardIdsResult))]
-[JsonSerializable(typeof(SelectedCardInstancesResult))]
-public abstract record CardSelectionResult { }
-public record SelectedCardIdsResult(int[] CardIds) : CardSelectionResult;
-public record SelectedCardInstancesResult(string[] CardInstanceIds) : CardSelectionResult;
+  public required int Id { get; init; }
+  public required string Name { get; init; }
+  public required int Cost { get; init; }
+  public int Value { get; init; } = 0;
+  public Func<GameState, string, int>? ValueFunc { get; init; }
+  public required CardType[] Types { get; init; }
+  public required FluentEffect[] Effects { get; init; }
+};
 
 public record CardFilter
 {
   public string Id { get; } = Guid.NewGuid().ToString();
-  public required CardZone From { get; set; }
-  public CardType[]? Types { get; set; }
-  public int? MinCost { get; set; }
-  public int? MaxCost { get; set; }
-  public int? MinCount { get; set; }
-  public int? MaxCount { get; set; }
-  public int? CardId { get; set; }
-  public int? NotId { get; set; }
+  public required CardZone From { get; init; }
+  public CardType[]? Types { get; init; }
+  public int? MinCost { get; init; }
+  public int? MaxCost { get; init; }
+  public int? MinCount { get; init; }
+  public int? MaxCount { get; init; }
+  public int? CardId { get; init; }
+  public int? NotId { get; init; }
+
+  [JsonIgnore]
+  public int ExactCount
+  {
+    init => MinCount = MaxCount = value;
+  }
+
+  [JsonIgnore]
+  public int ExactCost
+  {
+    init => MinCost = MaxCost = value;
+  }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum CardType { Action, Treasure, Victory, Curse, Attack, }
+public enum CardType { Action, Treasure, Victory, Curse, Attack, Reaction }
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CardZone { Supply, Trash, Deck, Discard, Hand, Play, Exile, Reveal, PrivateReveal }
 [JsonConverter(typeof(JsonStringEnumConverter))]
