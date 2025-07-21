@@ -2,7 +2,10 @@ using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection.Metadata.Ecma335;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Fluent;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Dominion.Backend;
@@ -88,26 +91,11 @@ public static class GameLogic
         var cardPile = game.KingdomCards.FirstOrDefault(pile => pile.Card.Id == cardId);
         if (cardPile is not null && cardPile.Remaining > 0 && thisPlayer.Resources.Buys > 0 && thisPlayer.Resources.Coins >= cardPile.Card.Cost)
         {
-          var cardInstance = new CardInstance(cardPile.Card);
-          var newCardPile = cardPile with { Remaining = cardPile.Remaining - 1 };
-          var newPlayer = thisPlayer with
-          {
-            Discard = [.. thisPlayer.Discard, cardInstance],
-            Resources = thisPlayer.Resources with
-            {
-              Buys = thisPlayer.Resources.Buys - 1,
-              Coins = thisPlayer.Resources.Coins - cardPile.Card.Cost
-            }
-          };
+          game = game.GainCardFromSupply(cardId, playerId, to: CardZone.Discard)
+            .UpdatePlayer(playerId, player => player with { Resources = player.Resources with { Buys = player.Resources.Buys - 1, Coins = player.Resources.Coins - cardPile.Card.Cost } }) with
+          { Phase = Phase.Buy };
 
-          game = game with
-          {
-            Phase = Phase.Buy,
-            Players = game.Players.Select(player => player.Id == newPlayer.Id ? newPlayer : player).ToArray(),
-            KingdomCards = [.. game.KingdomCards.Select(pile => pile.Card.Id == newCardPile.Card.Id ? newCardPile : pile)]
-          };
-
-          if (newPlayer.Resources.Buys == 0)
+          if (game.Players[thisPlayer.Index].Resources.Buys == 0)
           {
             return EndTurn(game);
           }

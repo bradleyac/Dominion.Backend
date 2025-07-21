@@ -1,5 +1,6 @@
+using System.Reflection.Metadata.Ecma335;
 using Fluent;
-using static Fluent.EffectSequence;
+using static Dominion.Backend.CardZone;
 
 namespace Dominion.Backend;
 
@@ -12,73 +13,41 @@ public static partial class GameStateExtensions
     HashSet<string> cardInstanceIds = cards.Select(card => card.Id).ToHashSet();
     HashSet<int> cardIds = cards.Select(card => card.Card.Id).ToHashSet();
 
-    if (from == CardZone.Trash)
+    return from switch
     {
-      return @this with { Trash = [.. @this.Trash.Where(card => !cardInstanceIds.Contains(card.Id))] };
-    }
-
-    if (from == CardZone.Reveal)
-    {
-      return @this with { Reveal = [.. @this.Reveal.Where(card => !cardInstanceIds.Contains(card.Id))] };
-    }
-
-    if (from == CardZone.Supply)
-    {
-      return @this with { KingdomCards = [.. @this.KingdomCards.Select(kc => cardIds.Contains(kc.Card.Id) ? kc with { Remaining = kc.Remaining - 1 } : kc)] };
-    }
-
-    var player = @this.GetPlayer(playerId);
-
-    return @this with
-    {
-      Players = [.. @this.Players.Select(player => player.Id == playerId ? from switch {
-        CardZone.Deck => player with { Deck = [.. player.Deck.Where(card => !cardInstanceIds.Contains(card.Id))]},
-        CardZone.Discard => player with { Discard = [.. player.Discard.Where(card => !cardInstanceIds.Contains(card.Id))]},
-        CardZone.Hand => player with { Hand = [.. player.Hand.Where(card => !cardInstanceIds.Contains(card.Id))]},
-        CardZone.Play => player with { Play = [.. player.Play.Where(card => !cardInstanceIds.Contains(card.Id))]},
-        CardZone.PrivateReveal => player with { PrivateReveal = [.. player.PrivateReveal.Where(card => !cardInstanceIds.Contains(card.Id))]},
+      Trash => @this with { Trash = [.. @this.Trash.Where(card => !cardInstanceIds.Contains(card.Id))] },
+      Reveal => @this with { Reveal = [.. @this.Reveal.Where(card => !cardInstanceIds.Contains(card.Id))] },
+      Supply => @this with { KingdomCards = [.. @this.KingdomCards.Select(kc => cardIds.Contains(kc.Card.Id) ? kc with { Remaining = kc.Remaining - 1 } : kc)] },
+      _ => @this.UpdatePlayer(playerId, player => from switch
+      {
+        Deck => player with { Deck = [.. player.Deck.Where(card => !cardInstanceIds.Contains(card.Id))] },
+        Discard => player with { Discard = [.. player.Discard.Where(card => !cardInstanceIds.Contains(card.Id))] },
+        Hand => player with { Hand = [.. player.Hand.Where(card => !cardInstanceIds.Contains(card.Id))] },
+        Play => player with { Play = [.. player.Play.Where(card => !cardInstanceIds.Contains(card.Id))] },
+        PrivateReveal => player with { PrivateReveal = [.. player.PrivateReveal.Where(card => !cardInstanceIds.Contains(card.Id))] },
         _ => player
-      } : player)]
+      })
     };
   }
 
   public static GameState AddToCardZone(this GameState @this, CardZone to, string playerId, CardInstance cardInstance) => @this.AddToCardZone(to, playerId, [cardInstance]);
-  public static GameState AddToCardZone(this GameState @this, CardZone to, string playerId, CardInstance[] cards)
+  public static GameState AddToCardZone(this GameState @this, CardZone to, string playerId, IEnumerable<CardInstance> cards) => to switch
   {
-    HashSet<string> cardInstanceIds = cards.Select(card => card.Id).ToHashSet();
-    HashSet<int> cardIds = cards.Select(card => card.Card.Id).ToHashSet();
-
-    if (to == CardZone.Trash)
+    Trash => @this with { Trash = [.. @this.Trash, .. cards] },
+    Reveal => @this with { Reveal = [.. @this.Reveal, .. cards] },
+    Supply => @this with { KingdomCards = [.. @this.KingdomCards.Select(kc => cards.CardIds().Contains(kc.Card.Id) ? kc with { Remaining = kc.Remaining + 1 } : kc)] },
+    _ => @this.UpdatePlayer(playerId, player => to switch
     {
-      return @this with { Trash = [.. @this.Trash, .. cards] };
-    }
+      Deck => player with { Deck = [.. cards, .. player.Deck] },
+      Discard => player with { Discard = [.. player.Discard, .. cards] },
+      Hand => player with { Hand = [.. player.Hand, .. cards] },
+      Play => player with { Play = [.. player.Play, .. cards] },
+      PrivateReveal => player with { PrivateReveal = [.. player.PrivateReveal, .. cards] },
+      _ => player
+    })
+  };
 
-    if (to == CardZone.Reveal)
-    {
-      return @this with { Reveal = [.. @this.Reveal, .. cards] };
-    }
-
-    if (to == CardZone.Supply)
-    {
-      return @this with { KingdomCards = [.. @this.KingdomCards.Select(kc => cardIds.Contains(kc.Card.Id) ? kc with { Remaining = kc.Remaining + 1 } : kc)] };
-    }
-
-    var player = @this.Players.Single(player => player.Id == playerId);
-
-    return @this with
-    {
-      Players = [.. @this.Players.Select(player => player.Id != playerId ? player : to switch {
-        CardZone.Deck => player with { Deck = [.. cards, ..player.Deck]},
-        CardZone.Discard => player with { Discard = [.. player.Discard, .. cards]},
-        CardZone.Hand => player with { Hand = [.. player.Hand, .. cards]},
-        CardZone.Play => player with { Play = [.. player.Play, .. cards]},
-        CardZone.PrivateReveal => player with { PrivateReveal = [.. player.PrivateReveal, .. cards]},
-        _ => player
-      })]
-    };
-  }
-
-  public static GameState GainCardFromSupply(this GameState @this, int cardId, string? playerId = null, CardZone to = CardZone.Discard)
+  public static GameState GainCardFromSupply(this GameState @this, int cardId, string? playerId = null, CardZone to = Discard)
   {
     playerId ??= @this.ActivePlayerId!;
     var cardPile = @this.KingdomCards.FirstOrDefault(kc => kc.Card.Id == cardId && kc.Remaining > 0);
@@ -92,120 +61,36 @@ public static partial class GameStateExtensions
     return @this;
   }
 
-  public static GameState GainCardsFromSupply(this GameState @this, IEnumerable<int> cardIds, string? playerId = null, CardZone to = CardZone.Discard)
-  {
-    GameState newState = @this;
-    foreach (var cardId in cardIds)
-    {
-      newState = newState.GainCardFromSupply(cardId, playerId, to);
-    }
-    return newState;
-  }
-
+  public static GameState GainCardsFromSupply(this GameState @this, IEnumerable<int> cardIds, string? playerId = null, CardZone to = Discard) => cardIds.Aggregate(@this, (stateAccumulator, cardId) => stateAccumulator.GainCardFromSupply(cardId, playerId, to));
   public static GameState MoveBetweenZones(this GameState @this, CardZone from, CardZone to, string playerId, CardInstance[] cards) => @this.RemoveFromCardZone(from, playerId, cards).AddToCardZone(to, playerId, cards);
-  // TODO: Brittle?
   public static GameState MoveAllFromZone(this GameState @this, CardZone from, CardZone to, string playerId) => @this.AddToCardZone(to, playerId, @this.CardsInZone(from, playerId)).RemoveFromCardZone(from, playerId, @this.CardsInZone(from, playerId));
-  public static GameState TrashCards(this GameState @this, CardZone from, string playerId, CardInstance[] cards) => @this.MoveBetweenZones(from, CardZone.Trash, playerId, cards);
+  public static GameState TrashCards(this GameState @this, CardZone from, string playerId, CardInstance[] cards) => @this.MoveBetweenZones(from, Trash, playerId, cards);
   public static CardInstance[] CardsInZone(this GameState @this, CardZone from, string playerId) => from switch
   {
-    CardZone.Deck => @this.GetPlayer(playerId).Deck,
-    CardZone.Discard => @this.GetPlayer(playerId).Discard,
-    CardZone.Hand => @this.GetPlayer(playerId).Hand,
-    CardZone.Play => @this.GetPlayer(playerId).Play,
-    CardZone.Reveal => @this.Reveal,
-    CardZone.PrivateReveal => @this.GetPlayer(playerId).PrivateReveal,
-    CardZone.Trash => @this.Trash,
+    Deck => @this.GetPlayer(playerId).Deck,
+    Discard => @this.GetPlayer(playerId).Discard,
+    Hand => @this.GetPlayer(playerId).Hand,
+    Play => @this.GetPlayer(playerId).Play,
+    Reveal => @this.Reveal,
+    PrivateReveal => @this.GetPlayer(playerId).PrivateReveal,
+    Trash => @this.Trash,
     _ => throw new NotImplementedException(from.ToString())
   };
 
-  public static GameState RevealCardsFromDeck(this GameState @this, string playerId, int count)
+  public static GameState TakeCardsFromDeck(this GameState @this, string playerId, int count, out List<CardInstance> cards)
   {
-    int cardsRevealed = 0;
-
     var player = @this.GetPlayer(playerId);
 
-    List<CardInstance> reveal = [.. @this.Reveal];
+    cards = [];
     List<CardInstance> deck = [.. player.Deck];
     List<CardInstance> discard = [.. player.Discard];
 
-    while (cardsRevealed < count)
+    while (cards.Count < count)
     {
       if (deck is [var card, .. var rest])
       {
-        cardsRevealed++;
+        cards.Add(card);
         deck = rest;
-        reveal.Add(card);
-      }
-      else
-      {
-        if (discard.Count > 0)
-        {
-          deck = [.. discard.Shuffle()];
-          discard = [];
-          continue;
-        }
-        else
-        {
-          break;
-        }
-      }
-    }
-
-    return @this.UpdatePlayer(playerId, player => player with { Deck = [.. deck], Discard = [.. discard] }) with { Reveal = [.. reveal], };
-  }
-
-  public static GameState PrivatelyRevealCardsFromDeck(this GameState @this, string playerId, int count)
-  {
-    int cardsRevealed = 0;
-
-    var player = @this.GetPlayer(playerId);
-
-    List<CardInstance> reveal = [.. player.PrivateReveal];
-    List<CardInstance> deck = [.. player.Deck];
-    List<CardInstance> discard = [.. player.Discard];
-
-    while (cardsRevealed < count)
-    {
-      if (deck is [var card, .. var rest])
-      {
-        cardsRevealed++;
-        deck = rest;
-        reveal.Add(card);
-      }
-      else
-      {
-        if (discard.Count > 0)
-        {
-          deck = [.. discard.Shuffle()];
-          discard = [];
-          continue;
-        }
-        else
-        {
-          break;
-        }
-      }
-    }
-
-    return @this.UpdatePlayer(playerId, player => player with { Deck = [.. deck], Discard = [.. discard], PrivateReveal = [.. reveal] });
-  }
-
-  public static GameState DiscardCardsFromDeck(this GameState @this, string playerId, int count)
-  {
-    int cardsRevealed = 0;
-
-    var player = @this.GetPlayer(playerId);
-
-    List<CardInstance> discard = [.. player.Discard];
-    List<CardInstance> deck = [.. player.Deck];
-
-    while (cardsRevealed < count)
-    {
-      if (deck is [var card, .. var rest])
-      {
-        cardsRevealed++;
-        deck = rest;
-        discard.Add(card);
       }
       else
       {
@@ -225,6 +110,10 @@ public static partial class GameStateExtensions
     return @this.UpdatePlayer(playerId, player => player with { Deck = [.. deck], Discard = [.. discard] });
   }
 
+  public static GameState RevealCardsFromDeck(this GameState @this, string playerId, int count) => @this.TakeCardsFromDeck(playerId, count, out var cards).AddToCardZone(Reveal, playerId, cards);
+  public static GameState PrivatelyRevealCardsFromDeck(this GameState @this, string playerId, int count) => @this.TakeCardsFromDeck(playerId, count, out var cards).AddToCardZone(PrivateReveal, playerId, cards);
+  public static GameState DiscardCardsFromDeck(this GameState @this, string playerId, int count) => @this.TakeCardsFromDeck(playerId, count, out var cards).AddToCardZone(Discard, playerId, cards);
+
   public static GameState UpdatePlayer(this GameState @this, string playerId, Func<PlayerState, PlayerState> updateFunc) => @this with
   {
     Players = [.. @this.Players.Select(player => player.Id == playerId ? updateFunc(player) : player)]
@@ -239,24 +128,28 @@ public static partial class GameStateExtensions
 
   public static bool DoAnyCardsMatch(this GameState @this, CardFilter filter, string playerId)
   {
-    var player = @this.GetPlayer(playerId);
-
     if (filter.MaxCount < 1)
     {
       return false; // No cards can match if max count is less than 1.
     }
 
+    var player = @this.GetPlayer(playerId);
+
     return filter.From switch
     {
-      CardZone.Deck => player.Deck.Any(card => card.Card.Matches(filter)),
-      CardZone.Discard => player.Discard.Any(card => card.Card.Matches(filter)),
-      CardZone.Hand => player.Hand.Any(card => card.Card.Matches(filter)),
-      CardZone.Play => player.Play.Any(card => card.Card.Matches(filter)),
-      CardZone.PrivateReveal => player.PrivateReveal.Any(card => card.Card.Matches(filter)),
-      CardZone.Reveal => @this.Reveal.Any(card => card.Card.Matches(filter)),
-      CardZone.Supply => @this.KingdomCards.Any(cardPile => cardPile.Card.Matches(filter)),
-      CardZone.Trash => @this.Trash.Any(card => card.Card.Matches(filter)),
+      Deck => player.Deck.Any(matches),
+      Discard => player.Discard.Any(matches),
+      Hand => player.Hand.Any(matches),
+      Play => player.Play.Any(matches),
+      PrivateReveal => player.PrivateReveal.Any(matches),
+      Reveal => @this.Reveal.Any(matches),
+      Supply => @this.KingdomCards.Any(cardPile => cardPile.Card.Matches(filter)),
+      Trash => @this.Trash.Any(matches),
       _ => throw new NotImplementedException()
     };
+
+    bool matches(CardInstance card) => card.Card.Matches(filter);
   }
+
+  public static GameState UpdatePlayerChoice(this GameState @this, EffectContext context, PlayerChoice newChoice, EffectResumeState resumeState) => @this.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = @this.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
 }

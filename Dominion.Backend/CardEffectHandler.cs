@@ -59,42 +59,36 @@ public static class FluentEffectHandler
           else if (currentEffect is EffectSequence.ThenSelectThunkDelegate choiceFunc)
           {
             var newChoice = choiceFunc(game, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.DoAnyCardsMatch(newChoice.Filter, context.PlayerId))
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerSelectChoiceResult { SelectedCards = [] });
             }
           }
           else if (currentEffect is EffectSequence.DoCategorizeDelegate categorizeFunc)
           {
             var newChoice = categorizeFunc(game, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.CardsInZone(newChoice.ZoneToCategorize, context.PlayerId).Length > 0)
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerCategorizeChoiceResult { CategorizedCards = [] });
             }
           }
           else if (currentEffect is EffectSequence.DoArrangeDelegate arrangeFunc)
           {
             var newChoice = arrangeFunc(game, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId).Length > 1)
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerArrangeChoiceResult { ArrangedCards = game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId) });
             }
           }
@@ -167,84 +161,73 @@ public static class FluentEffectHandler
           else if (currentEffect is EffectSequence.ThenSelectDelegate thenSelect)
           {
             var newChoice = thenSelect(game, resumeState.LastChoice!, result, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.DoAnyCardsMatch(newChoice.Filter, context.PlayerId))
             {
+              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
               return (game, false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerSelectChoiceResult { SelectedCards = [] });
             }
           }
           else if (currentEffect is EffectSequence.ThenSelectThunkDelegate choiceFunc)
           {
             var newChoice = choiceFunc(game, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.DoAnyCardsMatch(newChoice.Filter, context.PlayerId))
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerSelectChoiceResult { SelectedCards = [] });
             }
           }
           else if (currentEffect is EffectSequence.DoCategorizeDelegate doCategorizeFunc)
           {
             var newChoice = doCategorizeFunc(game, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.CardsInZone(newChoice.ZoneToCategorize, context.PlayerId).Length > 0)
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerCategorizeChoiceResult { CategorizedCards = [] });
             }
           }
           else if (currentEffect is EffectSequence.DoArrangeDelegate doArrangeFunc)
           {
             var newChoice = doArrangeFunc(game, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId).Length > 1)
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerArrangeChoiceResult { ArrangedCards = game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId) });
             }
           }
           else if (currentEffect is EffectSequence.ThenCategorizeDelegate thenCategorizeFunc)
           {
             var newChoice = thenCategorizeFunc(game, resumeState.LastChoice!, result, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.CardsInZone(newChoice.ZoneToCategorize, context.PlayerId).Length > 0)
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerCategorizeChoiceResult { CategorizedCards = [] });
             }
           }
           else if (currentEffect is EffectSequence.ThenArrangeDelegate thenArrangeFunc)
           {
             var newChoice = thenArrangeFunc(game, resumeState.LastChoice!, result, context);
-            game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = game.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
             if (game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId).Length > 1)
             {
-              return (game, false);
+              return (game.UpdatePlayerChoice(context, newChoice, resumeState), false);
             }
             else
             {
-              game = game.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = null });
               return ResumeHandleEffect(game, context.PlayerId, effect, new PlayerArrangeChoiceResult { ArrangedCards = game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId) });
             }
           }
