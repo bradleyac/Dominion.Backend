@@ -32,7 +32,7 @@ public record EffectContext
   public required string PlayerId { get; init; }
 }
 
-public record PendingEffectResumeState(int EffectIndex);
+public record PendingEffectResumeState(int EffectIndex, bool IsNew);
 public record EffectSequenceResumeState(string[] PlayerIds, int PlayerIndex, int SubeffectIndex, PlayerChoice? LastChoice);
 
 public record PendingEffect
@@ -40,11 +40,24 @@ public record PendingEffect
   public string Id { get; } = Guid.NewGuid().ToString();
   public required string OwnerId { get; init; }
   public required EffectSequence[] Effects { get; init; }
-  protected PendingEffectResumeState ResumeState { get; init; } = new PendingEffectResumeState(0);
+  public required bool IsPlayCard { get; init; }
+  protected PendingEffectResumeState ResumeState { get; init; } = new PendingEffectResumeState(0, true);
 
   public (GameState Game, PendingEffect? NewEffect) Resolve(GameState game, PlayerChoiceResult? result)
   {
     var resumeState = ResumeState;
+
+    if (resumeState.IsNew)
+    {
+      if (IsPlayCard)
+      {
+        // Check for reactions
+
+        resumeState = resumeState with { IsNew = false };
+        return (game, this with { ResumeState = resumeState });
+      }
+      resumeState = resumeState with { IsNew = false };
+    }
 
     for (int i = resumeState.EffectIndex; i < Effects.Length; i++)
     {

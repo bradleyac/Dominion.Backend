@@ -4,7 +4,7 @@ using Fluent;
 namespace Dominion.Backend;
 
 public record GameState(string GameId, bool GameStarted, GameResult? GameResult, CardPileState[] KingdomCards, PlayerState[] Players, CardInstance[] Trash, CardInstance[] Reveal, int CurrentTurn, int CurrentPlayer, string? ActivePlayerId, Phase Phase, string[] Log, PendingEffect[] EffectStack);
-public record PlayerState(string Id, int Index, CardInstance[] Hand, CardInstance[] Deck, CardInstance[] Discard, CardInstance[] Play, CardInstance[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice);
+public record PlayerState(string Id, int Index, CardInstance[] Hand, CardInstance[] Deck, CardInstance[] Discard, CardInstance[] Play, CardInstance[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice, string[] ImmuneToEffectIds);
 public record PlayerResources(int Actions, int Buys, int Coins, int Villagers, int Coffers, int Points)
 {
   public static readonly PlayerResources Empty = new PlayerResources(0, 0, 0, 0, 0, 0);

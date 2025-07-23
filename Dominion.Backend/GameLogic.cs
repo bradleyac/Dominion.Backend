@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -137,7 +138,7 @@ public static class GameLogic
             });
           }
 
-          game = game with { EffectStack = [.. game.EffectStack, .. Enumerable.Range(0, count).Select(i => new PendingEffect { Effects = cardInstance.Card.Effects, OwnerId = playerId })] };
+          game = game with { EffectStack = [.. game.EffectStack, .. Enumerable.Range(0, count).Select(i => new PendingEffect { IsPlayCard = true, Effects = cardInstance.Card.Effects, OwnerId = playerId })] };
           return (afterCurrentEffect ? game : ProcessEffectStack(game), true);
         }
       }
@@ -160,7 +161,11 @@ public static class GameLogic
       }
 
       // Remove the effect we just processed. It might not be at the top of the stack anymore.
-      game = game with { EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)] };
+      game = game with
+      {
+        EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)],
+        Players = [.. game.Players.Select(p => p with { ImmuneToEffectIds = [.. p.ImmuneToEffectIds.Where(e => e != currentEffect.Id)] })]
+      };
     }
 
     return game with { ActivePlayerId = game.Players[game.CurrentPlayer].Id };
