@@ -146,89 +146,24 @@ public static class GameLogic
     return (game, false);
   }
 
-  public static GameState ProcessEffectStack(GameState game)
+  public static GameState ProcessEffectStack(GameState game, PlayerChoiceResult? lastResult = null)
   {
-    PendingEffect? currentEffect;
-
-    while ((currentEffect = game.EffectStack.LastOrDefault()) is not null)
-    {
-      game = game with
-      {
-        ResumeState = new PlayCardResumeState(0, null)
-      };
-
-      for (int i = 0; i < currentEffect.Effects.Length; i++)
-      {
-        game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
-        (game, bool completed) = FluentEffectHandler.HandleEffect(game, currentEffect.OwnerId, currentEffect.Effects[i]);
-        if (!completed)
-        {
-          return game;
-        }
-      }
-
-      // Remove the effect we just processed. It might not be at the top of the stack anymore.
-      game = game with { EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)] };
-    }
-
-    return game with { ResumeState = null, ActivePlayerId = game.Players[game.CurrentPlayer].Id };
-  }
-
-
-  public static GameState ResumeProcessEffectStack(GameState game, string playerId, PlayerChoice lastChoice, PlayerChoiceResult lastResult)
-  {
-    PendingEffect? currentEffect = game.EffectStack.LastOrDefault();
-
-    if (currentEffect is null) return game;
-
-    var resumeState = game.ResumeState;
-    var resumedEffect = currentEffect.Effects[resumeState.EffectIndex];
-
     game = game with { Players = [.. game.Players.Select(p => p with { ActiveChoice = null })] };
-
-    (game, bool completed) = FluentEffectHandler.ResumeHandleEffect(game, playerId, resumedEffect, lastResult);
-    if (!completed)
+    while (game.EffectStack is [.., var currentEffect])
     {
-      return game;
-    }
+      (game, var newEffect) = currentEffect.Resolve(game, lastResult);
 
-    for (int i = resumeState.EffectIndex + 1; i < currentEffect.Effects.Length; i++)
-    {
-      game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
-      (game, completed) = FluentEffectHandler.HandleEffect(game, currentEffect.OwnerId, currentEffect.Effects[i]);
-      if (!completed)
+      if (newEffect is not null)
       {
-        return game;
-      }
-    }
-
-    // Remove the effect we just processed. It might not be at the top of the stack anymore.
-    game = game with { EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)] };
-
-    while ((currentEffect = game.EffectStack.LastOrDefault()) is not null)
-    {
-      game = game with
-      {
-        ResumeState = new PlayCardResumeState(0, null)
-      };
-
-      for (int i = 0; i < currentEffect.Effects.Length; i++)
-      {
-        game = game with { ResumeState = game.ResumeState! with { EffectIndex = i, EffectResumeState = null } };
-
-        (game, completed) = FluentEffectHandler.HandleEffect(game, currentEffect.OwnerId, currentEffect.Effects[i]);
-        if (!completed)
-        {
-          return game;
-        }
+        // Not done with this effect yet.
+        return game with { EffectStack = [.. game.EffectStack.Select(e => e.Id == newEffect.Id ? newEffect : e)] };
       }
 
-      // TODO: This feels clumsy.
       // Remove the effect we just processed. It might not be at the top of the stack anymore.
       game = game with { EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)] };
     }
 
-    return game with { ResumeState = null, ActivePlayerId = game.Players[game.CurrentPlayer].Id };
+    return game with { ActivePlayerId = game.Players[game.CurrentPlayer].Id };
   }
 
   private static PlayerState StartPlayerTurn(PlayerState player) => player with { Resources = PlayerResources.NewTurn(player.Resources) };

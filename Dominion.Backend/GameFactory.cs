@@ -30,7 +30,6 @@ public static class GameFactory
       ActivePlayerId: null,
       Phase: Phase.Action,
       Log: [],
-      ResumeState: null,
       EffectStack: []
     );
   }

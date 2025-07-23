@@ -119,10 +119,11 @@ public static partial class GameStateExtensions
     Players = [.. @this.Players.Select(player => player.Id == playerId ? updateFunc(player) : player)]
   };
 
-  public static string[] GetTargets(this GameState @this, EffectTarget target) => target switch
+  public static string[] GetTargets(this GameState @this, string ownerId, EffectTarget target) => target switch
   {
-    EffectTarget.All => [.. @this.Players.Skip(@this.CurrentPlayer).Select(p => p.Id), .. @this.Players.Take(@this.CurrentPlayer).Select(p => p.Id)],
-    EffectTarget.Opps => [.. @this.Players.Skip(@this.CurrentPlayer + 1).Select(p => p.Id), .. @this.Players.Take(@this.CurrentPlayer).Select(p => p.Id)],
+    EffectTarget.All => @this.Players.Rotate(@this.GetPlayer(ownerId).Index).Select(p => p.Id).ToArray(),
+    EffectTarget.Opps => @this.Players.Rotate(@this.GetPlayer(ownerId).Index).Where(p => p.Id != ownerId).Select(p => p.Id).ToArray(),
+    EffectTarget.Me => [ownerId],
     _ => throw new NotImplementedException()
   };
 
@@ -151,5 +152,5 @@ public static partial class GameStateExtensions
     bool matches(CardInstance card) => card.Card.Matches(filter);
   }
 
-  public static GameState UpdatePlayerChoice(this GameState @this, EffectContext context, PlayerChoice newChoice, EffectResumeState resumeState) => @this.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId, ResumeState = @this.ResumeState! with { EffectResumeState = resumeState with { LastChoice = newChoice } } };
+  public static GameState UpdatePlayerChoice(this GameState @this, EffectContext context, PlayerChoice newChoice) => @this.UpdatePlayer(context.PlayerId, player => player with { ActiveChoice = newChoice }) with { ActivePlayerId = context.PlayerId };
 }

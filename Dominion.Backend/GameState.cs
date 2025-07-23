@@ -3,7 +3,7 @@ using Fluent;
 
 namespace Dominion.Backend;
 
-public record GameState(string GameId, bool GameStarted, GameResult? GameResult, CardPileState[] KingdomCards, PlayerState[] Players, CardInstance[] Trash, CardInstance[] Reveal, int CurrentTurn, int CurrentPlayer, string? ActivePlayerId, Phase Phase, string[] Log, PlayCardResumeState? ResumeState, PendingEffect[] EffectStack);
+public record GameState(string GameId, bool GameStarted, GameResult? GameResult, CardPileState[] KingdomCards, PlayerState[] Players, CardInstance[] Trash, CardInstance[] Reveal, int CurrentTurn, int CurrentPlayer, string? ActivePlayerId, Phase Phase, string[] Log, PendingEffect[] EffectStack);
 public record PlayerState(string Id, int Index, CardInstance[] Hand, CardInstance[] Deck, CardInstance[] Discard, CardInstance[] Play, CardInstance[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice);
 public record PlayerResources(int Actions, int Buys, int Coins, int Villagers, int Coffers, int Points)
 {
@@ -27,7 +27,7 @@ public record CardData
   public int Value { get; init; } = 0;
   public Func<GameState, string, int>? ValueFunc { get; init; }
   public required CardType[] Types { get; init; }
-  public required FluentEffect[] Effects { get; init; }
+  public required EffectSequence[] Effects { get; init; }
 };
 
 public record CardFilter
@@ -60,6 +60,6 @@ public enum CardType { Action, Treasure, Victory, Curse, Attack, Reaction }
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CardZone { Supply, Trash, Deck, Discard, Hand, Play, Exile, Reveal, PrivateReveal }
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum EffectTarget { All, Opps, }
+public enum EffectTarget { Me, All, Opps, }
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum Phase { Action, BuyOrPlay, Buy, Cleanup }

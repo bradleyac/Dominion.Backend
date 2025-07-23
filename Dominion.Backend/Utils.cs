@@ -65,4 +65,6 @@ public static class Utils
 
     return @this;
   }
+
+  public static IEnumerable<T> Rotate<T>(this IEnumerable<T> @this, int count) => [.. @this.Skip(count), .. @this.Take(count)];
 }

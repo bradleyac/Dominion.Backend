@@ -104,31 +104,24 @@ public class GameHub(IGameStateService gameService) : Hub
   public async Task SubmitCardInstanceChoicesAsync(string gameId, string playerId, string choiceId, string[] cardInstanceIds)
   {
     var game = await _gameService.GetGameAsync(gameId);
-
-    if (game?.ResumeState?.EffectResumeState is null || game.ResumeState.EffectResumeState.PlayerIds[game.ResumeState.EffectResumeState.PlayerIndex] != playerId)
-    {
-      // Not the right player.
-      return;
-    }
-
     var player = game.GetPlayer(playerId);
 
-    if (player.ActiveChoice?.Id != choiceId)
+    if (game?.ActivePlayerId != playerId || player.ActiveChoice?.Id != choiceId)
     {
-      // Old choice.
+      // Not the right player or old choice.
       return;
     }
 
-    PlayerChoiceResult? choiceResult = player.ActiveChoice switch
+    PlayerChoiceResult? result = player.ActiveChoice switch
     {
       PlayerSelectChoice selectChoice => new PlayerSelectChoiceResult { SelectedCards = [.. cardInstanceIds.Select(cardInstanceId => CardInstance.GetCardInstance(playerId, cardInstanceId, selectChoice.Filter.From, game))] },
       PlayerArrangeChoice arrangeChoice => new PlayerArrangeChoiceResult { ArrangedCards = [.. cardInstanceIds.Select(cardInstanceId => CardInstance.GetCardInstance(playerId, cardInstanceId, arrangeChoice.ZoneToArrange, game))] },
       _ => null
     };
 
-    if (choiceResult is not null)
+    if (result is not null)
     {
-      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, choiceResult);
+      var newGameState = GameLogic.ProcessEffectStack(game, result);
 
       await _gameService.UpdateGameAsync(newGameState);
 
@@ -139,18 +132,11 @@ public class GameHub(IGameStateService gameService) : Hub
   public async Task SubmitCardChoicesAsync(string gameId, string playerId, string choiceId, int[] cardIds)
   {
     var game = await _gameService.GetGameAsync(gameId);
-
-    if (game?.ResumeState?.EffectResumeState is null || game.ResumeState.EffectResumeState.PlayerIds[game.ResumeState.EffectResumeState.PlayerIndex] != playerId)
-    {
-      // Not the right player.
-      return;
-    }
-
     var player = game.GetPlayer(playerId);
 
-    if (player.ActiveChoice?.Id != choiceId)
+    if (game?.ActivePlayerId != playerId || player.ActiveChoice?.Id != choiceId)
     {
-      // Old choice.
+      // Not the right player or old choice.
       return;
     }
 
@@ -163,7 +149,7 @@ public class GameHub(IGameStateService gameService) : Hub
         SelectedCards = [.. cardIds.Select(CardInstance.CreateByCardId)],
       };
 
-      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, result);
+      var newGameState = GameLogic.ProcessEffectStack(game, result);
 
       await _gameService.UpdateGameAsync(newGameState);
 
@@ -174,18 +160,11 @@ public class GameHub(IGameStateService gameService) : Hub
   public async Task SubmitCategorizationAsync(string gameId, string playerId, string choiceId, Dictionary<string, string[]> categorizations)
   {
     var game = await _gameService.GetGameAsync(gameId);
-
-    if (game?.ResumeState?.EffectResumeState is null || game.ResumeState.EffectResumeState.PlayerIds[game.ResumeState.EffectResumeState.PlayerIndex] != playerId)
-    {
-      // Not the right player.
-      return;
-    }
-
     var player = game.GetPlayer(playerId);
 
-    if (player.ActiveChoice?.Id != choiceId)
+    if (game?.ActivePlayerId != playerId || player.ActiveChoice?.Id != choiceId)
     {
-      // Old choice.
+      // Not the right player or old choice.
       return;
     }
 
@@ -198,7 +177,7 @@ public class GameHub(IGameStateService gameService) : Hub
         CategorizedCards = categorizations.Select(kvp => KeyValuePair.Create(kvp.Key, kvp.Value.Select(id => CardInstance.GetCardInstance(playerId, id, categorizeChoice.ZoneToCategorize, game)).ToArray())).ToDictionary(),
       };
 
-      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, result);
+      var newGameState = GameLogic.ProcessEffectStack(game, result);
 
       await _gameService.UpdateGameAsync(newGameState);
 
@@ -210,7 +189,7 @@ public class GameHub(IGameStateService gameService) : Hub
   {
     var game = await _gameService.GetGameAsync(gameId);
 
-    if (game?.ResumeState?.EffectResumeState?.PlayerIds[game.ResumeState.EffectResumeState.PlayerIndex] != playerId)
+    if (game?.ActivePlayerId != playerId || game.GetPlayer(playerId).ActiveChoice is null)
     {
       // Not the right player.
       return;
@@ -234,7 +213,7 @@ public class GameHub(IGameStateService gameService) : Hub
         IsDeclined = true,
       };
 
-      var newGameState = GameLogic.ResumeProcessEffectStack(game, playerId, player.ActiveChoice, result);
+      var newGameState = GameLogic.ProcessEffectStack(game, result);
 
       await _gameService.UpdateGameAsync(newGameState);
 
