@@ -8,6 +8,7 @@ namespace Dominion.Backend;
 [JsonDerivedType(typeof(PlayerSelectChoice), "select")]
 [JsonDerivedType(typeof(PlayerArrangeChoice), "arrange")]
 [JsonDerivedType(typeof(PlayerCategorizeChoice), "categorize")]
+[JsonDerivedType(typeof(PlayerReactChoice), "react")]
 public abstract record PlayerChoice
 {
   public string Id { get; init; } = Guid.NewGuid().ToString();
@@ -33,6 +34,18 @@ public record PlayerCategorizeChoice : PlayerChoice
   public required string DefaultCategory { get; init; }
   public required string[] Categories { get; init; }
   public required CardZone ZoneToCategorize { get; init; }
+}
+
+public record PlayerReactChoice : PlayerChoice
+{
+  public required EffectReference[] EffectReferences { get; init; }
+  public required string TriggeringEffectId { get; init; }
+  public required string TriggerOwnerId { get; init; }
+}
+
+public record PlayerReactChoiceResult : PlayerChoiceResult
+{
+  public CardInstance? ChosenReaction { get; init; }
 }
 
 public abstract record PlayerChoiceResult

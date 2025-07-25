@@ -60,7 +60,9 @@ public static class GameLogic
         _ => player
       }).ToArray();
 
-      return game with { Phase = Phase.Action, Players = newPlayers, CurrentTurn = nextTurn, CurrentPlayer = nextPlayerIndex, ActivePlayerId = newPlayers[nextPlayerIndex].Id };
+      game = game with { Phase = Phase.Action, Players = newPlayers, CurrentTurn = nextTurn, CurrentPlayer = nextPlayerIndex, ActivePlayerId = newPlayers[nextPlayerIndex].Id };
+      game = game.AddStartOfTurnReactions();
+      return ProcessEffectStack(game);
     }
   }
 
@@ -96,7 +98,12 @@ public static class GameLogic
             .UpdatePlayer(playerId, player => player with { Resources = player.Resources with { Buys = player.Resources.Buys - 1, Coins = player.Resources.Coins - cardPile.Card.Cost } }) with
           { Phase = Phase.Buy };
 
-          if (game.Players[thisPlayer.Index].Resources.Buys == 0)
+          if (game.EffectStack is not [])
+          {
+            game = ProcessEffectStack(game);
+          }
+
+          if (game.Players[thisPlayer.Index].Resources.Buys == 0 && game.EffectStack is [])
           {
             return EndTurn(game);
           }
@@ -125,9 +132,12 @@ public static class GameLogic
           || (game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Action) && thisPlayer.Resources.Actions > 0)
           || (game.Phase == Phase.BuyOrPlay && cardInstance.Card.Types.Contains(CardType.Treasure)))
         {
+          CardZone cardLocation = from;
+
           if (moveCard)
           {
             game = game.MoveBetweenZones(from, CardZone.Play, playerId, [cardInstance]);
+            cardLocation = CardZone.Play;
           }
 
           if (!ignoreCostsAndPhases && game.Phase == Phase.Action && cardInstance.Card.Types.Contains(CardType.Action))
@@ -138,7 +148,7 @@ public static class GameLogic
             });
           }
 
-          game = game with { EffectStack = [.. game.EffectStack, .. Enumerable.Range(0, count).Select(i => new PendingEffect { IsPlayCard = true, Effects = cardInstance.Card.Effects, OwnerId = playerId })] };
+          game = game with { EffectStack = [.. game.EffectStack, .. Enumerable.Range(0, count).Select(i => new PendingEffect { PlayedCard = cardInstance, PlayedCardLocation = cardLocation, Effects = cardInstance.Card.Effects, OwnerId = playerId })] };
           return (afterCurrentEffect ? game : ProcessEffectStack(game), true);
         }
       }
@@ -152,12 +162,20 @@ public static class GameLogic
     game = game with { Players = [.. game.Players.Select(p => p with { ActiveChoice = null })] };
     while (game.EffectStack is [.., var currentEffect])
     {
-      (game, var newEffect) = currentEffect.Resolve(game, lastResult);
+      (game, var newEffect, bool restart) = currentEffect.Resolve(game, lastResult);
 
       if (newEffect is not null)
       {
         // Not done with this effect yet.
-        return game with { EffectStack = [.. game.EffectStack.Select(e => e.Id == newEffect.Id ? newEffect : e)] };
+        game = game with { EffectStack = [.. game.EffectStack.Select(e => e.Id == newEffect.Id ? newEffect : e)] };
+        if (restart)
+        {
+          continue;
+        }
+        else
+        {
+          return game;
+        }
       }
 
       // Remove the effect we just processed. It might not be at the top of the stack anymore.
@@ -166,6 +184,18 @@ public static class GameLogic
         EffectStack = [.. game.EffectStack.Where(effect => effect.Id != currentEffect.Id)],
         Players = [.. game.Players.Select(p => p with { ImmuneToEffectIds = [.. p.ImmuneToEffectIds.Where(e => e != currentEffect.Id)] })]
       };
+
+      lastResult = null;
+    }
+
+    if (game.Phase == Phase.Action && (game.Players[game.CurrentPlayer].Resources.Actions == 0 || !game.Players[game.CurrentPlayer].HasActionsToPlay()))
+    {
+      game = game with { Phase = Phase.BuyOrPlay };
+    }
+
+    if (game.Players[game.CurrentPlayer].Resources.Buys == 0 && game.Phase is Phase.Buy or Phase.BuyOrPlay)
+    {
+      game = EndTurn(game);
     }
 
     return game with { ActivePlayerId = game.Players[game.CurrentPlayer].Id };
@@ -175,6 +205,7 @@ public static class GameLogic
 
   private static PlayerState EndPlayerTurn(PlayerState player) => (player with
   {
+    AmbientTriggers = [.. player.AmbientTriggers.Where(t => !t.Expires || t.TurnsRemaining > 0).Select(t => t with { TurnsRemaining = Math.Max(0, t.TurnsRemaining - 1) })],
     Discard = [.. player.Discard, .. player.Hand, .. player.Play],
     Play = [],
     Hand = [],

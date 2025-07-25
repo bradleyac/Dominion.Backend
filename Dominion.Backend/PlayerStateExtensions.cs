@@ -41,4 +41,5 @@ public static class PlayerStateExtensions
 
     return @this with { Deck = [.. deck], Hand = [.. hand], Discard = [.. discard] };
   }
+  public static bool HasActionsToPlay(this PlayerState @this) => @this.Hand.Any(c => c.Card.Types.Contains(CardType.Action));
 }

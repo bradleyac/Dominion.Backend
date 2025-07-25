@@ -116,6 +116,7 @@ public class GameHub(IGameStateService gameService) : Hub
     {
       PlayerSelectChoice selectChoice => new PlayerSelectChoiceResult { SelectedCards = [.. cardInstanceIds.Select(cardInstanceId => CardInstance.GetCardInstance(playerId, cardInstanceId, selectChoice.Filter.From, game))] },
       PlayerArrangeChoice arrangeChoice => new PlayerArrangeChoiceResult { ArrangedCards = [.. cardInstanceIds.Select(cardInstanceId => CardInstance.GetCardInstance(playerId, cardInstanceId, arrangeChoice.ZoneToArrange, game))] },
+      PlayerReactChoice reactChoice => new PlayerReactChoiceResult { ChosenReaction = CardInstance.GetCardInstance(playerId, cardInstanceIds[0], reactChoice.EffectReferences.First(effect => effect.CardInstance.InstanceId == cardInstanceIds[0]).CardInstance.Location, game) },
       _ => null
     };
 
@@ -207,10 +208,13 @@ public class GameHub(IGameStateService gameService) : Hub
     {
       // TODO (somewhere): Validate choices
 
-      var result = new PlayerSelectChoiceResult
+      PlayerChoiceResult result = player.ActiveChoice switch
       {
-        SelectedCards = [],
-        IsDeclined = true,
+        PlayerSelectChoice psc => new PlayerSelectChoiceResult { SelectedCards = [], IsDeclined = true },
+        PlayerArrangeChoice pac => new PlayerArrangeChoiceResult { ArrangedCards = [], IsDeclined = true },
+        PlayerCategorizeChoice pcc => new PlayerCategorizeChoiceResult { CategorizedCards = [], IsDeclined = true },
+        PlayerReactChoice prc => new PlayerReactChoiceResult { ChosenReaction = null, IsDeclined = true },
+        _ => throw new NotImplementedException()
       };
 
       var newGameState = GameLogic.ProcessEffectStack(game, result);

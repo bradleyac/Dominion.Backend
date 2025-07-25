@@ -1,3 +1,5 @@
+using static Dominion.Backend.CardZone;
+
 namespace Dominion.Backend;
 
 public record GameStateViewModel(string GameId, bool GameStarted, GameResult? GameResult, KingdomState KingdomState, TurnState TurnState, LogState Log, FullPlayerData Me, PartialPlayerData[] Opponents);
@@ -5,7 +7,8 @@ public record TurnState(string CurrentTurnPlayerId, string? ActivePlayerId, int 
 public record LogState(string[] Messages);
 public record KingdomState(CardPile[] Supply, CardInstanceDto[] Trash, CardInstanceDto[] Reveal);
 public record CardPile(int CardId, int Count);
-public record CardInstanceDto(string InstanceId, int CardId);
+public record CardInstanceDto(string InstanceId, int CardId, CardZone Location);
+public record EffectReference(CardInstanceDto CardInstance, string Prompt);
 public record FullPlayerData(string PlayerId, CardInstanceDto[] Hand, int DeckCount, CardInstanceDto[] Discard, CardInstanceDto[] Play, CardInstanceDto[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice);
 public record PartialPlayerData(string PlayerId, int HandCount, int DeckCount, int DiscardCount, int? DiscardFaceUpCardId, CardInstanceDto[] Play, PlayerResources Resources);
 public record GameResult(string[] Winners, Dictionary<string, double> Scores);
@@ -21,14 +24,14 @@ public static partial class GameStateExtensions
       GameId: @this.GameId,
       GameStarted: @this.GameStarted,
       GameResult: @this.GameResult,
-      KingdomState: new KingdomState([.. @this.KingdomCards.Select(kc => new CardPile(kc.Card.Id, kc.Remaining))], [.. @this.Trash.Select(ToDto)], [.. @this.Reveal.Select(ToDto)]),
+      KingdomState: new KingdomState([.. @this.KingdomCards.Select(kc => new CardPile(kc.Card.Id, kc.Remaining))], [.. @this.Trash.Select(ToDto(Trash))], [.. @this.Reveal.Select(ToDto(Reveal))]),
       TurnState: new TurnState(@this.Players[@this.CurrentPlayer].Id, @this.ActivePlayerId, @this.CurrentTurn, @this.Phase.ToString()),
       Log: new LogState(@this.Log),
-      Me: new FullPlayerData(playerId, [.. player.Hand.Select(ToDto)], player.Deck.Length, [.. player.Discard.Select(ToDto)], [.. player.Play.Select(ToDto)], [.. player.PrivateReveal.Select(ToDto)], player.Resources, player.ActiveChoice),
-      Opponents: [.. opps.Select(opp => new PartialPlayerData(opp.Id, opp.Hand.Length, opp.Deck.Length, opp.Discard.Length, opp.Discard.LastOrDefault()?.Card.Id, [.. opp.Play.Select(ToDto)], opp.Resources))]
+      Me: new FullPlayerData(playerId, [.. player.Hand.Select(ToDto(Hand))], player.Deck.Length, [.. player.Discard.Select(ToDto(Discard))], [.. player.Play.Select(ToDto(Play))], [.. player.PrivateReveal.Select(ToDto(PrivateReveal))], player.Resources, player.ActiveChoice),
+      Opponents: [.. opps.Select(opp => new PartialPlayerData(opp.Id, opp.Hand.Length, opp.Deck.Length, opp.Discard.Length, opp.Discard.LastOrDefault()?.Card.Id, [.. opp.Play.Select(ToDto(Play))], opp.Resources))]
     );
   }
 
-  private static CardInstanceDto ToDto(this CardInstance @this) => new CardInstanceDto(@this.Id, @this.Card.Id);
-
+  public static Func<CardInstance, CardInstanceDto> ToDto(CardZone location) => (CardInstance instance) => ToDto(instance, location);
+  public static CardInstanceDto ToDto(this CardInstance @this, CardZone location) => new CardInstanceDto(@this.Id, @this.Card.Id, location);
 }

@@ -4,6 +4,8 @@ using static Fluent.Fluent;
 using static CardZone;
 using static CardType;
 using static Utils;
+using Fluent;
+using Microsoft.OpenApi.Any;
 
 public static class MasterCardData
 {
@@ -16,12 +18,18 @@ public static class MasterCardData
     public const int Duchy = 9;
     public const int Province = 10;
     public const int Curse = 11;
+    public const int Witch = 15;
     public const int Bandit = 17;
     public const int Vassal = 22;
     public const int Bureaucrat = 23;
     public const int Militia = 26;
     public const int Sentry = 29;
     public const int ThroneRoom = 30;
+    public const int Moat = 33;
+    public const int Merchant = 34;
+    public const int Beggar = 35;
+    public const int Trail = 36;
+    public const int Clerk = 37;
   }
 
   public static readonly (int, int)[] StartingPiles = [
@@ -35,9 +43,9 @@ public static class MasterCardData
   ];
 
   public static readonly (int, int)[] StartingDeck = [
-    (CardIDs.Copper, 7),
-    (CardIDs.Estate, 3),
-    // (CardIDs.ThroneRoom, 5),
+    (CardIDs.Silver, 7),
+    (CardIDs.Merchant, 3),
+    // (CardIDs.Trail, 5),
     // (CardIDs.Bandit, 5),
   ];
 
@@ -199,7 +207,40 @@ public static class MasterCardData
         .MoveSelectedCardsTo(Reveal)
         .MoveRevealedCardsTo(Hand, true)),
       Do((state, ctx) => state.MoveAllFromZone(Reveal, Discard, ctx.PlayerId))]},
-    new () { Id = 33, Name = "Moat", Cost = 2, Types = [Action, Reaction], Effects = [Do(DoActivePlayer(p => p.DrawCards(2)))] },
-    new () { Id = 34, Name = "Merchant", Cost = 3, Types = [Action], Effects = [Do(DoActivePlayer(p => p.DrawCards(1).GainActions(1)))]},
+    new () { Id = 33, Name = "Moat", Cost = 2, Types = [Action, Reaction], Effects = [Do(DoActivePlayer(p => p.DrawCards(2)))],
+      CanReact = (ctx) => ctx.Trigger == ReactionTrigger.Play && ctx.TriggerCard!.Card.Types.Contains(Attack) && ctx.ReactingPlayerId != ctx.TriggerOwnerId,
+      ReactionIsIdempotent = true,
+      ReactionPrompt = "Reveal Moat",
+      ReactionEffects = [new EffectSequence((state, triggeringEffectId, triggeredCardInstanceId, triggeredCardLocation, ctx) => state.UpdatePlayer(ctx.PlayerId, p => p with { ImmuneToEffectIds = [.. p.ImmuneToEffectIds, triggeringEffectId] }))]},
+    new () { Id = 34, Name = "Merchant", Cost = 3, Types = [Action], Effects = [
+      Do(DoActivePlayer(p => p.DrawCards(1).GainActions(1))),
+      // TODO: THIS IS WRONG! Should be based on actual count of played silvers and not based on # of silvers in play,
+      // you could play the same silver twice and this should only give one. This may not have any practical effect, however, since the trigger is consumed on use.
+      // If you somehow played another merchant between two plays of the same silver, then this would be broken.
+      Do(DoActivePlayer(p => p with { AmbientTriggers = [.. p.AmbientTriggers, new AmbientTrigger
+        {
+          CanTrigger = (state, ctx) => ctx.Trigger == ReactionTrigger.Play && ctx.TriggerCard.Card.Id == CardIDs.Silver && state.GetPlayer(ctx.ReactingPlayerId).Play.Count(c => c.Card.Id == CardIDs.Silver) == 1,
+          Effects = [Do(DoActivePlayer(p => p.GainCoins(1)))]
+        } ]}))] },
+    new () { Id = 35, Name = "Beggar", Cost = 2, Types = [Action, Reaction], Effects = [Do((state, ctx) => state.GainCardsFromSupply([CardIDs.Copper, CardIDs.Copper, CardIDs.Copper], to: Hand))],
+      CanReact = (ctx) => ctx.Trigger == ReactionTrigger.Play && ctx.TriggerCard!.Card.Types.Contains(Attack) && ctx.ReactingPlayerId != ctx.TriggerOwnerId,
+      ReactionPrompt = "Discard Beggar",
+      ReactionEffects = [new EffectSequence((state, triggeringEffectId, triggeredCardInstanceId, triggeredCardLocation, ctx) => state
+        .GainCardFromSupply(CardIDs.Silver, to: Deck)
+        .GainCardFromSupply(CardIDs.Silver)
+        .MoveBetweenZones(Hand, Discard, ctx.PlayerId, [CardInstance.GetCardInstance(ctx.PlayerId, triggeredCardInstanceId, Hand, state)]))]},
+    new () { Id = 36, Name = "Trail", Cost = 4, Types = [Action, Reaction], Effects = [Do(DoActivePlayer(p => p.DrawCards(1).GainActions(1)))],
+      CanReact = (ctx) => ctx.Trigger is ReactionTrigger.Discard or ReactionTrigger.Trash or ReactionTrigger.Gain && ctx.TriggerOwnerId == ctx.ReactingPlayerId && ctx.ReactingCardId == ctx.TriggerCard.Id,
+      ReactionPrompt = "Play Trail",
+      ReactionEffects = [new EffectSequence((state, triggeringEffectId, triggeredCardInstanceId, triggeredCardLocation, ctx) =>
+        GameLogic.PlayCard(state, ctx.PlayerId, triggeredCardInstanceId, triggeredCardLocation, ignoreCostsAndPhases: true, afterCurrentEffect: true).Item1)]},
+    new () { Id = 37, Name = "Clerk", Cost = 4, Types = [Action, Reaction, Attack], Effects = [
+      Do(DoActivePlayer(p => p.GainCoins(2))),
+      ForEach(EffectTarget.Opps, SelectCards((state, ctx) => new PlayerSelectChoice { Filter = new CardFilter { From = Hand, ExactCount = state.GetPlayer(ctx.PlayerId).Hand.Length >= 5 ? 1 : 0 }, Prompt = "Select a card to put onto your deck" })
+        .MoveSelectedCardsTo(Deck))],
+      CanReact = (ctx) => ctx.Trigger == ReactionTrigger.StartOfTurn,
+      ReactionPrompt = "Play Clerk",
+      ReactionEffects = [new EffectSequence((state, triggeringEffetId, triggeredCardInstanceId, triggeredCardLocation, ctx) =>
+        GameLogic.PlayCard(state, ctx.PlayerId, triggeredCardInstanceId, triggeredCardLocation, ignoreCostsAndPhases: true, afterCurrentEffect: true).Item1)]},
   }.ToDictionary(card => card.Id, card => card);
 }

@@ -1,14 +1,12 @@
+using System.Linq;
 using Dominion.Backend;
 using Stateless.Graph;
 
 namespace Fluent;
 
-// SelectCards(new Filter(...)).Then(state, cards => {
-//   state.GainCards(cards, to: hand)
-// }),
-// SelectCards(new Filter(...)).Then(State, cards => State.MoveCards(cards, from: hand, to: deck))
 public static class Fluent
 {
+  public static EffectSequence React(EffectSequence.ReactDelegate react) => new EffectSequence(react);
   public static EffectSequence Do(EffectSequence.DoDelegate @do) => new EffectSequence(@do);
   public static EffectSequence SelectCards(EffectSequence.ThenSelectThunkDelegate choiceFunc) => new EffectSequence(choiceFunc);
   public static EffectSequence Then(this EffectSequence @this, EffectSequence.DoDelegate @do) => @this.Add(@do);
@@ -32,7 +30,7 @@ public record EffectContext
   public required string PlayerId { get; init; }
 }
 
-public record PendingEffectResumeState(int EffectIndex, bool IsNew);
+public record PendingEffectResumeState(int EffectIndex, bool ReactionsTriggered, bool PostReactionsTriggered);
 public record EffectSequenceResumeState(string[] PlayerIds, int PlayerIndex, int SubeffectIndex, PlayerChoice? LastChoice);
 
 public record PendingEffect
@@ -40,36 +38,51 @@ public record PendingEffect
   public string Id { get; } = Guid.NewGuid().ToString();
   public required string OwnerId { get; init; }
   public required EffectSequence[] Effects { get; init; }
-  public required bool IsPlayCard { get; init; }
-  protected PendingEffectResumeState ResumeState { get; init; } = new PendingEffectResumeState(0, true);
+  public string? TriggeringEffectId { get; init; }
+  public CardInstance? PlayedCard { get; init; }
+  public CardZone? PlayedCardLocation { get; init; }
+  public CardInstance? ReactingCard { get; init; }
+  public CardZone? ReactingCardLocation { get; init; }
+  protected PendingEffectResumeState ResumeState { get; init; } = new PendingEffectResumeState(0, false, false);
 
-  public (GameState Game, PendingEffect? NewEffect) Resolve(GameState game, PlayerChoiceResult? result)
+  public (GameState Game, PendingEffect? NewEffect, bool Restart) Resolve(GameState game, PlayerChoiceResult? result)
   {
     var resumeState = ResumeState;
 
-    if (resumeState.IsNew)
+    if (!resumeState.ReactionsTriggered)
     {
-      if (IsPlayCard)
-      {
-        // Check for reactions
+      resumeState = resumeState with { ReactionsTriggered = true };
 
-        resumeState = resumeState with { IsNew = false };
-        return (game, this with { ResumeState = resumeState });
+      // Check for reactions
+      if (PlayedCard is not null)
+      {
+        game = game.AddCardPlayedReactions(PlayedCard, PlayedCardLocation!.Value, Id, OwnerId);
+        return (game, this with { ResumeState = resumeState }, true);
       }
-      resumeState = resumeState with { IsNew = false };
+    }
+
+    if (!resumeState.PostReactionsTriggered)
+    {
+      resumeState = resumeState with { PostReactionsTriggered = true };
+
+      if (PlayedCard is not null)
+      {
+        game = game.AddCardPlayedPostReactionTriggers(PlayedCard, OwnerId);
+        return (game, this with { ResumeState = resumeState }, true);
+      }
     }
 
     for (int i = resumeState.EffectIndex; i < Effects.Length; i++)
     {
       resumeState = resumeState with { EffectIndex = i };
-      (game, var newEffect) = Effects[i].Resolve(game, OwnerId, result);
+      (game, var newEffect, bool restart) = Effects[i].Resolve(game, OwnerId, Id, TriggeringEffectId, ReactingCard, ReactingCardLocation, result);
       if (newEffect is not null)
       {
-        return (game, this with { ResumeState = resumeState, Effects = [.. Effects.Take(i), newEffect, .. Effects.Skip(i + 1)] });
+        return (game, this with { ResumeState = resumeState, Effects = [.. Effects.Take(i), newEffect, .. Effects.Skip(i + 1)] }, restart);
       }
     }
 
-    return (game, null);
+    return (game, null, false);
   }
 }
 
@@ -78,6 +91,7 @@ public record EffectSequence
   public delegate GameState DoDelegate(GameState gameState, EffectContext context);
   public delegate GameState ThenDelegate(GameState gameState, PlayerChoice choice, PlayerChoiceResult result, EffectContext context);
   public delegate GameState ThenAfterSelectDelegate(GameState gameState, PlayerSelectChoice choice, PlayerSelectChoiceResult result, EffectContext context);
+  public delegate GameState ReactDelegate(GameState gameState, string triggeringEffectId, string triggeredCardInstanceId, CardZone triggeredCardLocation, EffectContext context);
   public delegate PlayerSelectChoice ThenSelectDelegate(GameState gameState, PlayerChoice choice, PlayerChoiceResult result, EffectContext context);
   public delegate PlayerSelectChoice ThenSelectThunkDelegate(GameState gameState, EffectContext context);
   public delegate PlayerCategorizeChoice DoCategorizeDelegate(GameState gameState, EffectContext context);
@@ -102,6 +116,11 @@ public record EffectSequence
   public EffectSequence(ThenSelectThunkDelegate choiceFunc)
   {
     Effects.Add(choiceFunc);
+  }
+
+  public EffectSequence(ReactDelegate react)
+  {
+    Effects.Add(react);
   }
 
   public EffectSequence Add(ThenDelegate then)
@@ -158,14 +177,20 @@ public record EffectSequence
     return this;
   }
 
+  public EffectSequence Add(ReactDelegate react)
+  {
+    Effects.Add(react);
+    return this;
+  }
+
   protected EffectSequenceResumeState? ResumeState { get; init; }
 
-  public (GameState, EffectSequence?) Resolve(GameState game, string ownerId, PlayerChoiceResult? result)
+  public (GameState, EffectSequence?, bool Restart) Resolve(GameState game, string ownerId, string currentEffectId, string? triggeringEffectId, CardInstance? reactingCard, CardZone? reactingCardLocation, PlayerChoiceResult? result)
   {
     bool firstTime = ResumeState is null;
     var resumeState = ResumeState ?? new EffectSequenceResumeState(game.GetTargets(ownerId, Target), 0, 0, null);
 
-    if (resumeState.LastChoice is PlayerChoice choice && result!.IsDeclined)
+    if (resumeState.LastChoice is PlayerChoice choice && (result?.IsDeclined ?? false))
     {
       game = choice.OnDecline(game, choice, result, new EffectContext { PlayerId = resumeState.PlayerIds[resumeState.PlayerIndex] });
       resumeState = resumeState with { LastChoice = null, PlayerIndex = resumeState.PlayerIndex + 1, SubeffectIndex = 0 };
@@ -174,6 +199,14 @@ public record EffectSequence
     for (int playerIndex = resumeState.PlayerIndex; playerIndex < resumeState.PlayerIds.Length; playerIndex++)
     {
       EffectContext context = new EffectContext { PlayerId = resumeState.PlayerIds[playerIndex] };
+
+      // If the active player is immune to this effect, continue to the next player.
+      var activePlayer = game.GetPlayer(context.PlayerId);
+      if (activePlayer.ImmuneToEffectIds.Contains(currentEffectId))
+      {
+        continue;
+      }
+
       bool loopedOnce = false;
 
       do
@@ -201,11 +234,11 @@ public record EffectSequence
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.DoAnyCardsMatch(newChoice.Filter, context.PlayerId))
             {
-              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState });
+              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState }, false);
             }
             else
             {
-              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, new PlayerSelectChoiceResult { SelectedCards = [] });
+              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, currentEffectId, triggeringEffectId, reactingCard, reactingCardLocation, new PlayerSelectChoiceResult { SelectedCards = [] });
             }
           }
           else if (currentEffect is ThenSelectThunkDelegate choiceFunc)
@@ -214,11 +247,11 @@ public record EffectSequence
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.DoAnyCardsMatch(newChoice.Filter, context.PlayerId))
             {
-              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState });
+              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState }, false);
             }
             else
             {
-              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, new PlayerSelectChoiceResult { SelectedCards = [] });
+              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, currentEffectId, triggeringEffectId, reactingCard, reactingCardLocation, new PlayerSelectChoiceResult { SelectedCards = [] });
             }
           }
           else if (currentEffect is DoCategorizeDelegate doCategorizeFunc)
@@ -227,11 +260,11 @@ public record EffectSequence
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.CardsInZone(newChoice.ZoneToCategorize, context.PlayerId).Length > 0)
             {
-              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState });
+              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState }, false);
             }
             else
             {
-              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, new PlayerCategorizeChoiceResult { CategorizedCards = [] });
+              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, currentEffectId, triggeringEffectId, reactingCard, reactingCardLocation, new PlayerCategorizeChoiceResult { CategorizedCards = [] });
             }
           }
           else if (currentEffect is DoArrangeDelegate doArrangeFunc)
@@ -240,11 +273,11 @@ public record EffectSequence
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId).Length > 1)
             {
-              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState });
+              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState }, false);
             }
             else
             {
-              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, new PlayerArrangeChoiceResult { ArrangedCards = game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId) });
+              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, currentEffectId, triggeringEffectId, reactingCard, reactingCardLocation, new PlayerArrangeChoiceResult { ArrangedCards = game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId) });
             }
           }
           else if (currentEffect is ThenCategorizeDelegate thenCategorizeFunc)
@@ -253,11 +286,11 @@ public record EffectSequence
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.CardsInZone(newChoice.ZoneToCategorize, context.PlayerId).Length > 0)
             {
-              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState });
+              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState }, false);
             }
             else
             {
-              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, new PlayerCategorizeChoiceResult { CategorizedCards = [] });
+              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, currentEffectId, triggeringEffectId, reactingCard, reactingCardLocation, new PlayerCategorizeChoiceResult { CategorizedCards = [] });
             }
           }
           else if (currentEffect is ThenArrangeDelegate thenArrangeFunc)
@@ -266,12 +299,39 @@ public record EffectSequence
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId).Length > 1)
             {
-              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState });
+              return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState }, false);
             }
             else
             {
-              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, new PlayerArrangeChoiceResult { ArrangedCards = game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId) });
+              return (this with { ResumeState = resumeState }).Resolve(game, ownerId, currentEffectId, triggeringEffectId, reactingCard, reactingCardLocation, new PlayerArrangeChoiceResult { ArrangedCards = game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId) });
             }
+          }
+          else if (currentEffect is PlayerReactChoice reactChoice)
+          {
+            if (result is PlayerReactChoiceResult reactResult)
+            {
+              game = game with { EffectStack = [.. game.EffectStack, new PendingEffect { ReactingCard = reactResult.ChosenReaction, ReactingCardLocation = reactChoice.EffectReferences.FirstOrDefault(effectRef => effectRef.CardInstance.InstanceId == reactResult.ChosenReaction.Id)?.CardInstance.Location, OwnerId = context.PlayerId, TriggeringEffectId = reactChoice.TriggeringEffectId, Effects = reactResult.ChosenReaction.Card.ReactionEffects }] };
+              var newChoice = reactChoice with { Id = Guid.NewGuid().ToString(), EffectReferences = [.. reactChoice.EffectReferences.Where(e => e.CardInstance.InstanceId != reactResult.ChosenReaction.Id)] };
+              return (game, this with { ResumeState = resumeState, Effects = [.. Effects, newChoice] }, true);
+            }
+            else
+            {
+              // Remove reactions whose cards have moved.
+              reactChoice = reactChoice with { EffectReferences = [.. reactChoice.EffectReferences.Where(eref => game.IsCardInZone(context.PlayerId, eref.CardInstance.InstanceId, eref.CardInstance.Location))] };
+              if (reactChoice.EffectReferences.Any())
+              {
+                resumeState = resumeState with { LastChoice = reactChoice };
+                return (game.UpdatePlayerChoice(context, reactChoice), this with { ResumeState = resumeState, Effects = [.. Effects, reactChoice with { Id = Guid.NewGuid().ToString() }] }, false);
+              }
+              else
+              {
+                return (game, null, false);
+              }
+            }
+          }
+          else if (currentEffect is ReactDelegate react)
+          {
+            game = react(game, triggeringEffectId, reactingCard.Id, reactingCardLocation.Value, context);
           }
           else
           {
@@ -280,6 +340,6 @@ public record EffectSequence
         }
       } while (LoopCondition(game, context));
     }
-    return (game, null);
+    return (game, null, false);
   }
 }
