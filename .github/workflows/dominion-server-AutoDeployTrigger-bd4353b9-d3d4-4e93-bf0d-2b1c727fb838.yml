@@ -42,7 +42,7 @@ jobs:
           registryPassword: ${{ secrets.DOMINIONSERVER_REGISTRY_PASSWORD }}
           containerAppName: dominion-server
           resourceGroup: dominion-server
-          imageToBuild: default/[parameters('containerAppName')]:${{ github.sha }}
+          imageToBuild: default/dominion-server:${{ github.sha }}
           _buildArgumentsKey_: |
             _buildArgumentsValues_
 
