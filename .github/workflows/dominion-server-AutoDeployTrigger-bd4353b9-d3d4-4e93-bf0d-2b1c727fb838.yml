@@ -34,12 +34,12 @@ jobs:
       - name: Build and push container image to registry
         uses: azure/container-apps-deploy-action@v2
         with:
-          acrName: dominion
           appSourcePath: ${{ github.workspace }}/Dominion.Backend/
           _dockerfilePathKey_: _dockerfilePath_
           _targetLabelKey_: _targetLabel_
-          acrUsername: ${{ secrets.DOMINIONSERVER_REGISTRY_USERNAME }}
-          acrPassword: ${{ secrets.DOMINIONSERVER_REGISTRY_PASSWORD }}
+          registryUrl: dominion.azurecr.io
+          registryUsername: ${{ secrets.DOMINIONSERVER_REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.DOMINIONSERVER_REGISTRY_PASSWORD }}
           containerAppName: dominion-server
           resourceGroup: dominion-server
           imageToBuild: default/dominion-server:${{ github.sha }}
