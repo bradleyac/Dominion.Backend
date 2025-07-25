@@ -35,7 +35,7 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           acrName: dominion
-          appSourcePath: ${{ github.workspace }}/Dominion.Backend
+          appSourcePath: ${{ github.workspace }}/Dominion.Backend/
           _dockerfilePathKey_: _dockerfilePath_
           _targetLabelKey_: _targetLabel_
           registryUsername: ${{ secrets.DOMINIONSERVER_REGISTRY_USERNAME }}
