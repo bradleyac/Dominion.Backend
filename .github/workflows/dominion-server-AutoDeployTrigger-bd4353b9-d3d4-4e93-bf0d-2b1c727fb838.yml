@@ -38,8 +38,8 @@ jobs:
           appSourcePath: ${{ github.workspace }}/Dominion.Backend/
           _dockerfilePathKey_: _dockerfilePath_
           _targetLabelKey_: _targetLabel_
-          registryUsername: ${{ secrets.DOMINIONSERVER_REGISTRY_USERNAME }}
-          registryPassword: ${{ secrets.DOMINIONSERVER_REGISTRY_PASSWORD }}
+          acrUsername: ${{ secrets.DOMINIONSERVER_REGISTRY_USERNAME }}
+          acrPassword: ${{ secrets.DOMINIONSERVER_REGISTRY_PASSWORD }}
           containerAppName: dominion-server
           resourceGroup: dominion-server
           imageToBuild: default/dominion-server:${{ github.sha }}
