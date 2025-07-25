@@ -38,13 +38,13 @@ public static class MasterCardData
     (CardIDs.Gold, 30),
     (CardIDs.Estate, 8),
     (CardIDs.Duchy, 8),
-    (CardIDs.Province, 2),
+    (CardIDs.Province, 8),
     (CardIDs.Curse, 10)
   ];
 
   public static readonly (int, int)[] StartingDeck = [
-    (CardIDs.Silver, 7),
-    (CardIDs.Merchant, 3),
+    (CardIDs.Copper, 7),
+    (CardIDs.Estate, 3),
     // (CardIDs.Trail, 5),
     // (CardIDs.Bandit, 5),
   ];
