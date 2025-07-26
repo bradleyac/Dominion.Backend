@@ -24,7 +24,7 @@ if (app.Environment.IsDevelopment())
         .AllowCredentials()); // allow credentials
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 app.MapHub<GameHub>("/gameHub");
 
