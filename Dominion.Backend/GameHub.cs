@@ -12,12 +12,10 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     return await _gameService.GetAllGameIdsAsync();
   }
 
-  public async Task<string> CreateGameAsync(string playerId)
+  public async Task<string> CreateGameAsync()
   {
-    if (_contextAccessor.HttpContext.Items["authPrincipalName"] is string email && playerId == "Sinclair")
-    {
-      playerId = email;
-    }
+    string playerId = GetPlayerId();
+
     string gameId = await _gameService.CreateGameAsync(playerId);
     await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
     await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
@@ -27,8 +25,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     return gameId;
   }
 
-  public async Task JoinGameAsync(string gameId, string playerId)
+  public async Task JoinGameAsync(string gameId)
   {
+    string playerId = GetPlayerId();
     // TODO: Validation
     await _gameService.JoinGameAsync(playerId, gameId);
     await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
@@ -43,14 +42,16 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     await UpdateAllAsync(gameId);
   }
 
-  public async Task<GameStateViewModel> GetGameStateAsync(string gameId, string playerId)
+  public async Task<GameStateViewModel> GetGameStateAsync(string gameId)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
     return game.ToPlayerGameStateViewModel(playerId);
   }
 
-  public async Task PlayCardAsync(string gameId, string playerId, string cardInstanceId)
+  public async Task PlayCardAsync(string gameId, string cardInstanceId)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
 
     var (newGameState, played) = GameLogic.PlayCard(game, playerId, cardInstanceId);
@@ -63,8 +64,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     }
   }
 
-  public async Task EndTurnAsync(string gameId, string playerId)
+  public async Task EndTurnAsync(string gameId)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
 
     if (game is null || game.Players[game.CurrentPlayer].Id != playerId || game.ActivePlayerId != game.Players[game.CurrentPlayer].Id)
@@ -79,8 +81,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     await UpdateAllAsync(gameId);
   }
 
-  public async Task BuyCardAsync(string gameId, string playerId, int cardId)
+  public async Task BuyCardAsync(string gameId, int cardId)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
 
     if (game is null || game.Players[game.CurrentPlayer].Id != playerId || game.ActivePlayerId != game.Players[game.CurrentPlayer].Id)
@@ -95,8 +98,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     await UpdateAllAsync(gameId);
   }
 
-  public async Task EndActionPhaseAsync(string gameId, string playerId)
+  public async Task EndActionPhaseAsync(string gameId)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
 
     var newGameState = GameLogic.EndActionPhase(game, playerId);
@@ -106,8 +110,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     await UpdateAllAsync(gameId);
   }
 
-  public async Task SubmitCardInstanceChoicesAsync(string gameId, string playerId, string choiceId, string[] cardInstanceIds)
+  public async Task SubmitCardInstanceChoicesAsync(string gameId, string choiceId, string[] cardInstanceIds)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
     var player = game.GetPlayer(playerId);
 
@@ -135,8 +140,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     }
   }
 
-  public async Task SubmitCardChoicesAsync(string gameId, string playerId, string choiceId, int[] cardIds)
+  public async Task SubmitCardChoicesAsync(string gameId, string choiceId, int[] cardIds)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
     var player = game.GetPlayer(playerId);
 
@@ -163,8 +169,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     }
   }
 
-  public async Task SubmitCategorizationAsync(string gameId, string playerId, string choiceId, Dictionary<string, string[]> categorizations)
+  public async Task SubmitCategorizationAsync(string gameId, string choiceId, Dictionary<string, string[]> categorizations)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
     var player = game.GetPlayer(playerId);
 
@@ -191,8 +198,9 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     }
   }
 
-  public async Task DeclineChoiceAsync(string gameId, string playerId, string choiceId)
+  public async Task DeclineChoiceAsync(string gameId, string choiceId)
   {
+    string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
 
     if (game?.ActivePlayerId != playerId || game.GetPlayer(playerId).ActiveChoice is null)
@@ -230,13 +238,14 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     }
   }
 
-  public async Task UndoAsync(string gameId, string playerId)
+  public async Task UndoAsync(string gameId)
   {
+    string playerId = GetPlayerId();
     await _gameService.UndoAsync(playerId, gameId);
     await UpdateAllAsync(gameId);
   }
 
-  public async Task UpdateAllAsync(string gameId)
+  private async Task UpdateAllAsync(string gameId)
   {
     var game = await _gameService.GetGameAsync(gameId);
 
@@ -255,4 +264,6 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
   {
     await Clients.All.SendAsync("gameCreated", gameId);
   }
+
+  private string GetPlayerId() => (string)_contextAccessor.HttpContext!.Items["authPrincipalName"]!;
 }
