@@ -1,4 +1,5 @@
 using Dominion.Backend;
+using Dominion.Backend.Middleware;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -11,8 +12,9 @@ builder.Services.AddSignalR();
 builder.Services.AddCors();
 builder.Services.AddSingleton<IGameStateService, InMemoryGameStateService>();
 builder.Services.AddLogging();
+builder.Services.AddHttpContextAccessor();
 var app = builder.Build();
-
+app.UseAppServiceClaimsPrincipalMiddleware();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

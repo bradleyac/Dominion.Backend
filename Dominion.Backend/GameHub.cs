@@ -2,9 +2,10 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Dominion.Backend;
 
-public class GameHub(IGameStateService gameService) : Hub
+public class GameHub(IGameStateService gameService, IHttpContextAccessor contextAccessor) : Hub
 {
   private readonly IGameStateService _gameService = gameService;
+  private readonly IHttpContextAccessor _contextAccessor = contextAccessor;
 
   public async Task<IEnumerable<string>> GetAllGamesAsync()
   {
@@ -13,6 +14,10 @@ public class GameHub(IGameStateService gameService) : Hub
 
   public async Task<string> CreateGameAsync(string playerId)
   {
+    if (_contextAccessor.HttpContext.Items["authPrincipalName"] is string email && playerId == "Sinclair")
+    {
+      playerId = email;
+    }
     string gameId = await _gameService.CreateGameAsync(playerId);
     await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
     await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
