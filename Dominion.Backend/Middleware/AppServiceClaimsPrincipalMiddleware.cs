@@ -22,6 +22,7 @@ public class AppServiceClaimsPrincipalMiddleware(RequestDelegate next)
     }
 
     var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(context.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? ""));
+    Console.WriteLine(clientPrincipalHeaderJson);
     var user = ParseClientPrincipalHeader(clientPrincipalHeaderJson);
 
     if (user?.Identity?.IsAuthenticated ?? false)
