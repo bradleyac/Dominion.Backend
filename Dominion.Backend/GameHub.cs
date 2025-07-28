@@ -2,10 +2,11 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Dominion.Backend;
 
-public class GameHub(IGameStateService gameService, IHttpContextAccessor contextAccessor) : Hub
+public class GameHub(IGameStateService gameService, IHttpContextAccessor contextAccessor, ILogger<GameHub> logger) : Hub
 {
   private readonly IGameStateService _gameService = gameService;
   private readonly IHttpContextAccessor _contextAccessor = contextAccessor;
+  private ILogger<GameHub> _logger = logger;
 
   public async Task<IEnumerable<string>> GetAllGamesAsync()
   {
@@ -265,5 +266,11 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     await Clients.All.SendAsync("gameCreated", gameId);
   }
 
-  private string GetPlayerId() => (string)_contextAccessor.HttpContext!.Items["authPrincipalName"]!;
+  private string GetPlayerId()
+  {
+    _logger.LogWarning($"_contextAccessor.HttpContext is null ? {_contextAccessor.HttpContext is null}");
+    _logger.LogWarning($"_contextAccessor.HttpContext.Items is null ? {_contextAccessor.HttpContext?.Items is null}");
+    _logger.LogWarning($"_contextAccessor.HttpContext.Items is null ? {_contextAccessor.HttpContext?.Items["authPrincipalName"] is null}");
+    return (string)_contextAccessor.HttpContext!.Items["authPrincipalName"]!;
+  }
 }

@@ -21,8 +21,7 @@ public class AppServiceClaimsPrincipalMiddleware(RequestDelegate next)
       return;
     }
 
-    var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(context.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? ""));
-    Console.WriteLine(clientPrincipalHeaderJson);
+    var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(context.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? throw new UnauthorizedAccessException()));
     var user = ParseClientPrincipalHeader(clientPrincipalHeaderJson);
 
     if (user?.Identity?.IsAuthenticated ?? false)

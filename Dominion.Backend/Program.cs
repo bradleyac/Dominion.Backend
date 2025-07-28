@@ -1,7 +1,5 @@
 using Dominion.Backend;
 using Dominion.Backend.Middleware;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,8 +23,6 @@ if (app.Environment.IsDevelopment())
         .SetIsOriginAllowed(origin => true) // allow any origin
         .AllowCredentials()); // allow credentials
 }
-
-// app.UseHttpsRedirection();
 
 app.MapHub<GameHub>("/gameHub");
 
