@@ -8,7 +8,7 @@ namespace Dominion.Backend.Middleware;
 public class AppServiceClaimsPrincipalHubFilter(ILogger<AppServiceClaimsPrincipalHubFilter> logger) : IHubFilter
 {
   private readonly ILogger<AppServiceClaimsPrincipalHubFilter> _logger = logger;
-  ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocationContext, Func<HubInvocationContext, ValueTask<object?>> next)
+  public ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocationContext, Func<HubInvocationContext, ValueTask<object?>> next)
   {
     _logger.LogWarning(invocationContext?.Context?.User?.Identity?.Name ?? "invocationContext.Context.User.Identity.Name null");
     var httpContext = invocationContext.Context.GetHttpContext()!;
