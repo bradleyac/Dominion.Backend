@@ -266,11 +266,5 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
     await Clients.All.SendAsync("gameCreated", gameId);
   }
 
-  private string GetPlayerId()
-  {
-    _logger.LogWarning($"_contextAccessor.HttpContext is null ? {_contextAccessor.HttpContext is null}");
-    _logger.LogWarning($"_contextAccessor.HttpContext.Items is null ? {_contextAccessor.HttpContext?.Items is null}");
-    _logger.LogWarning($"_contextAccessor.HttpContext.Items is null ? {_contextAccessor.HttpContext?.Items["authPrincipalName"] is null}");
-    return (string)_contextAccessor.HttpContext!.Items["authPrincipalName"]!;
-  }
+  private string GetPlayerId() => (string)Context.GetHttpContext()!.Items["authPrincipalName"]!;
 }
