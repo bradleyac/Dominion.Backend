@@ -16,7 +16,8 @@ public class AppServiceClaimsPrincipalHubFilter(ILogger<AppServiceClaimsPrincipa
     var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? throw new HubException("Unauthorized")));
     var user = ParseClientPrincipalHeader(clientPrincipalHeaderJson);
 
-    _logger.LogWarning(user?.Identity?.Name ?? "user.Identity.Name null");
+    _logger.LogWarning(JsonSerializer.Serialize(user));
+    _logger.LogWarning(JsonSerializer.Serialize(user.Identity));
 
     if (user?.Identity?.IsAuthenticated ?? false)
     {
