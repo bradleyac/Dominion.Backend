@@ -15,6 +15,7 @@ public class AppServiceClaimsPrincipalHubFilter(ILogger<AppServiceClaimsPrincipa
 
     var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? throw new HubException("Unauthorized")));
     _logger.LogWarning(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? "no x-ms-client-principal header");
+    _logger.LogWarning(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL-NAME"].SingleOrDefault() ?? "no x-ms-client-principal-name header");
     var user = ParseClientPrincipalHeader(clientPrincipalHeaderJson);
 
     _logger.LogWarning(user.ToString());
