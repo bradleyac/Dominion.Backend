@@ -8,10 +8,10 @@ namespace Dominion.Backend.Middleware;
 public class AppServiceClaimsPrincipalHubFilter(ILogger<AppServiceClaimsPrincipalHubFilter> logger) : IHubFilter
 {
   private readonly ILogger<AppServiceClaimsPrincipalHubFilter> _logger = logger;
-  public ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocationContext, Func<HubInvocationContext, ValueTask<object?>> next)
+
+  public Task OnConnectedAsync(HubLifetimeContext context, Func<HubLifetimeContext, Task> next)
   {
-    _logger.LogWarning(invocationContext?.Context?.User?.Identity?.Name ?? "invocationContext.Context.User.Identity.Name null");
-    var httpContext = invocationContext.Context.GetHttpContext()!;
+    var httpContext = context.Context.GetHttpContext();
 
     var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? throw new HubException("Unauthorized")));
     var user = ParseClientPrincipalHeader(clientPrincipalHeaderJson);
@@ -22,6 +22,8 @@ public class AppServiceClaimsPrincipalHubFilter(ILogger<AppServiceClaimsPrincipa
       _logger.LogWarning($"{ident.Name} {ident.IsAuthenticated} {ident.AuthenticationType} {string.Join(",", ident.Claims)}");
     }
 
+    _logger.LogWarning(string.Join(",", httpContext.Items));
+
     if (user?.Identity?.IsAuthenticated ?? false)
     {
       httpContext.Items["claimsPrincipal"] = user;
@@ -30,13 +32,43 @@ public class AppServiceClaimsPrincipalHubFilter(ILogger<AppServiceClaimsPrincipa
       httpContext.Items["firstName"] = user.FindFirstValue(ClaimTypes.GivenName) ?? "Unknown";
       httpContext.Items["lastName"] = user.FindFirstValue(ClaimTypes.Surname) ?? "Unknown";
 
-      return next(invocationContext);
+      return next(context);
     }
     else
     {
       throw new HubException("Unauthorized");
     }
   }
+
+  // public ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocationContext, Func<HubInvocationContext, ValueTask<object?>> next)
+  // {
+  //   _logger.LogWarning(invocationContext?.Context?.User?.Identity?.Name ?? "invocationContext.Context.User.Identity.Name null");
+  //   var httpContext = invocationContext.Context.GetHttpContext()!;
+
+  //   var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? throw new HubException("Unauthorized")));
+  //   var user = ParseClientPrincipalHeader(clientPrincipalHeaderJson);
+
+  //   _logger.LogWarning(user.ToString());
+  //   foreach (var ident in user.Identities)
+  //   {
+  //     _logger.LogWarning($"{ident.Name} {ident.IsAuthenticated} {ident.AuthenticationType} {string.Join(",", ident.Claims)}");
+  //   }
+
+  //   if (user?.Identity?.IsAuthenticated ?? false)
+  //   {
+  //     httpContext.Items["claimsPrincipal"] = user;
+  //     httpContext.Items["authType"] = user.Identity.AuthenticationType;
+  //     httpContext.Items["authPrincipalName"] = user.Identity.Name;
+  //     httpContext.Items["firstName"] = user.FindFirstValue(ClaimTypes.GivenName) ?? "Unknown";
+  //     httpContext.Items["lastName"] = user.FindFirstValue(ClaimTypes.Surname) ?? "Unknown";
+
+  //     return next(invocationContext);
+  //   }
+  //   else
+  //   {
+  //     throw new HubException("Unauthorized");
+  //   }
+  // }
 
   private static ClaimsPrincipal ParseClientPrincipalHeader(string clientPrincipalHeaderJson)
   {
