@@ -16,6 +16,7 @@ public class GameHub(IGameStateService gameService, IHttpContextAccessor context
   public async Task<string> CreateGameAsync()
   {
     string playerId = GetPlayerId();
+    _logger.LogWarning($"PlayerId: {playerId}");
 
     string gameId = await _gameService.CreateGameAsync(playerId);
     await Groups.AddToGroupAsync(Context.ConnectionId, gameId);

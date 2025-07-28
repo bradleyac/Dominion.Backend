@@ -6,13 +6,16 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddSignalR();
+builder.Services.AddSingleton<AppServiceClaimsPrincipalHubFilter>();
+builder.Services.AddSignalR(hubOptions =>
+{
+    hubOptions.UseAppServiceClaimsPrincipalMiddleware();
+});
 builder.Services.AddCors();
 builder.Services.AddSingleton<IGameStateService, InMemoryGameStateService>();
 builder.Services.AddLogging();
 builder.Services.AddHttpContextAccessor();
 var app = builder.Build();
-app.UseAppServiceClaimsPrincipalMiddleware();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
