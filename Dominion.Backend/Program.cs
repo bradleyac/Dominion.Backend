@@ -9,7 +9,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSingleton<AppServiceClaimsPrincipalHubFilter>();
 builder.Services.AddSignalR(hubOptions =>
 {
-    hubOptions.UseAppServiceClaimsPrincipalMiddleware();
+    hubOptions.UseAppServiceClaimsPrincipalHubFilter();
 });
 builder.Services.AddCors();
 builder.Services.AddSingleton<IGameStateService, InMemoryGameStateService>();

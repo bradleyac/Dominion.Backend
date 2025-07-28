@@ -5,14 +5,18 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Dominion.Backend.Middleware;
 
-public class AppServiceClaimsPrincipalHubFilter : IHubFilter
+public class AppServiceClaimsPrincipalHubFilter(ILogger<AppServiceClaimsPrincipalHubFilter> logger) : IHubFilter
 {
+  private readonly ILogger<AppServiceClaimsPrincipalHubFilter> _logger = logger;
   ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocationContext, Func<HubInvocationContext, ValueTask<object?>> next)
   {
+    _logger.LogWarning(invocationContext?.Context?.User?.Identity?.Name ?? "invocationContext.Context.User.Identity.Name null");
     var httpContext = invocationContext.Context.GetHttpContext()!;
 
-    var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? throw new UnauthorizedAccessException()));
+    var clientPrincipalHeaderJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(httpContext.Request.Headers["X-MS-CLIENT-PRINCIPAL"].SingleOrDefault() ?? throw new HubException("Unauthorized")));
     var user = ParseClientPrincipalHeader(clientPrincipalHeaderJson);
+
+    _logger.LogWarning(user?.Identity?.Name ?? "user.Identity.Name null");
 
     if (user?.Identity?.IsAuthenticated ?? false)
     {
@@ -26,7 +30,7 @@ public class AppServiceClaimsPrincipalHubFilter : IHubFilter
     }
     else
     {
-      throw new UnauthorizedAccessException();
+      throw new HubException("Unauthorized");
     }
   }
 
@@ -61,5 +65,5 @@ internal class ClientPrincipal
 }
 public static class ClaimsPrincipalMiddlewareExtensions
 {
-  public static void UseAppServiceClaimsPrincipalMiddleware(this HubOptions hubOptions) => hubOptions.AddFilter<AppServiceClaimsPrincipalHubFilter>();
+  public static void UseAppServiceClaimsPrincipalHubFilter(this HubOptions hubOptions) => hubOptions.AddFilter<AppServiceClaimsPrincipalHubFilter>();
 }
