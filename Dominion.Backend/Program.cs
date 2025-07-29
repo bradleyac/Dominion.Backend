@@ -6,11 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddSingleton<AppServiceClaimsPrincipalHubFilter>();
-builder.Services.AddSignalR(hubOptions =>
-{
-    hubOptions.UseAppServiceClaimsPrincipalHubFilter();
-});
+builder.Services.AddSignalR();
 builder.Services.AddCors();
 builder.Services.AddSingleton<IGameStateService, InMemoryGameStateService>();
 builder.Services.AddLogging();
@@ -26,6 +22,8 @@ if (app.Environment.IsDevelopment())
         .SetIsOriginAllowed(origin => true)
         .AllowCredentials());
 }
+
+app.UseRequireGoogleIdTokenMiddleware();
 
 app.MapHub<GameHub>("/gameHub");
 
