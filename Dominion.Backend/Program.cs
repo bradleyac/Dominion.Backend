@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(opts => opts.EnableDetailedErrors = true);
 builder.Services.AddCors();
 builder.Services.AddSingleton<IGameStateService, InMemoryGameStateService>();
 builder.Services.AddLogging();
