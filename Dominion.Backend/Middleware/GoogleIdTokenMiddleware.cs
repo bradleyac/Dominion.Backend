@@ -9,19 +9,29 @@ public class GoogleIdTokenMiddleware(RequestDelegate next)
 
   public async Task InvokeAsync(HttpContext context)
   {
-    // Get Authorization header and remove Bearer to retrieve the idToken.
-    string? idToken = context.Request.Headers.Authorization.FirstOrDefault()?.Substring(startIndex: 7);
+    // TODO: Set up auth to do this properly and/or use cookies?
+    string? idToken;
+    // Check query string for access_token first, where it will be for WS and SSE.
+    if (context.Request.Query.TryGetValue("access_token", out var values))
+    {
+      idToken = values.FirstOrDefault();
+    }
+    else
+    {
+      // Get Authorization header and remove Bearer to retrieve the idToken.
+      idToken = context.Request.Headers.Authorization.FirstOrDefault()?.Substring(startIndex: 7);
+    }
 
     if (idToken is null)
     {
-      throw new UnauthorizedAccessException("Authorization header missing");
+      throw new UnauthorizedAccessException("Id Token missing");
     }
 
     var playerId = await VerifyGoogleTokenId(idToken);
 
     if (playerId is null)
     {
-      throw new UnauthorizedAccessException("Id Token from Authorization header missing email");
+      throw new UnauthorizedAccessException("Id Token missing email");
     }
 
     context.Items["playerId"] = playerId;
@@ -44,7 +54,7 @@ public class GoogleIdTokenMiddleware(RequestDelegate next)
     }
     catch (InvalidJwtException)
     {
-      throw new UnauthorizedAccessException("Id Token from Authorization header invalid");
+      throw new UnauthorizedAccessException("Id Token invalid");
     }
   }
 }
