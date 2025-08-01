@@ -7,7 +7,7 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
   private readonly IGameStateService _gameService = gameService;
   private ILogger<GameHub> _logger = logger;
 
-  public async Task<IEnumerable<string>> GetAllGamesAsync()
+  public async Task<IEnumerable<Game>> GetAllGamesAsync()
   {
     return await _gameService.GetAllGameIdsAsync();
   }
@@ -18,19 +18,26 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     _logger.LogWarning($"PlayerId: {playerId}");
 
     string gameId = await _gameService.CreateGameAsync(playerId);
+
     await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
     await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
 
-    await AdvertiseGameAsync(gameId);
+    var game = await _gameService.GetGameAsync(gameId);
+    await AdvertiseGameAsync(new Game(game.GameId, game.Players.Select(p => p.Id).ToArray()));
 
     return gameId;
   }
 
-  public async Task JoinGameAsync(string gameId)
+  public async Task<bool> JoinGameAsync(string gameId)
   {
     string playerId = GetPlayerId();
-    // TODO: Validation
-    await _gameService.JoinGameAsync(playerId, gameId);
+    bool joined = await _gameService.JoinGameAsync(playerId, gameId);
+
+    if (!joined)
+    {
+      return false;
+    }
+
     await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
     await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
 
@@ -41,6 +48,41 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     await _gameService.UpdateGameAsync(game, addUndoTarget: false);
 
     await UpdateAllAsync(gameId);
+
+    return true;
+  }
+
+  public async Task AbandonGameAsync(string gameId)
+  {
+    string playerId = GetPlayerId();
+
+    var game = await _gameService.GetGameAsync(gameId);
+
+    if (game.Players.Select(p => p.Id).Contains(playerId))
+    {
+      // If the game is already started, end it.
+      // Otherwise, remove the player.
+      if (game.GameStarted)
+      {
+        // TODO: Make a better "Game Forfeited" result
+        game = game with { GameResult = new([], []) };
+      }
+      else
+      {
+        game = game with { Players = [.. game.Players.Where(p => p.Id != playerId)] };
+      }
+
+      if (!game.Players.Any())
+      {
+        await _gameService.RemoveGameAsync(gameId);
+      }
+      else
+      {
+        await _gameService.UpdateGameAsync(game);
+
+        await UpdateAllAsync(gameId);
+      }
+    }
   }
 
   public async Task<GameStateViewModel> GetGameStateAsync(string gameId)
@@ -261,9 +303,9 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     }
   }
 
-  private async Task AdvertiseGameAsync(string gameId)
+  private async Task AdvertiseGameAsync(Game game)
   {
-    await Clients.All.SendAsync("gameCreated", gameId);
+    await Clients.All.SendAsync("gameCreated", game);
   }
 
   private string GetPlayerId() => (string)Context.GetHttpContext()!.Items["playerId"]!;

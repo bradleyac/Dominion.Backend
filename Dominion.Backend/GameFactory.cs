@@ -35,5 +35,6 @@ public static class GameFactory
   }
 
   public static GameState AddPlayer(GameState game, string playerId) => game with { Players = [.. game.Players, new PlayerState(playerId, game.Players.Length, [], CreateStartingDeck(), [], [], [], PlayerResources.Empty, null, [], [])] };
+
   private static CardInstance[] CreateStartingDeck() => MasterCardData.StartingDeck.SelectMany(deck => Enumerable.Range(1, deck.Item2).Select(_ => new CardInstance(MasterCardData.AllCards[deck.Item1]))).ToArray();
 }

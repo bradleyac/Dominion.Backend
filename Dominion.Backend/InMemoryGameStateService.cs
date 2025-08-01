@@ -9,29 +9,30 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
   // GameId to GameState map
   private readonly ConcurrentDictionary<string, GameState> _games = new();
   private readonly ConcurrentDictionary<(string GameId, string PlayerId), GameState[]> _undoTargets = new();
-  // PlayerId to GameId map
-  private readonly ConcurrentDictionary<string, string> _playerGameMap = new();
 
-  public Task<List<string>> GetAllGameIdsAsync() => Task.FromResult(_games.Keys.ToList());
+  public Task<List<Game>> GetAllGameIdsAsync() => Task.FromResult(_games.Values.Select(g => new Game(g.GameId, [.. g.Players.Select(p => p.Id)])).ToList());
 
   public Task<string> CreateGameAsync(string hostPlayerId)
   {
     var gameState = GameFactory.CreateGameState(hostPlayerId);
 
     _games[gameState.GameId] = gameState;
-    _playerGameMap[hostPlayerId] = gameState.GameId;
 
     _logger.LogInformation($"Created game: {gameState.GameId}");
 
     return Task.FromResult(gameState.GameId);
   }
 
-  public async Task JoinGameAsync(string playerId, string gameId)
+  public async Task<bool> JoinGameAsync(string playerId, string gameId)
   {
-    if (_games[gameId].Players.Any(player => player.Id == playerId)) return;
+    if (_games[gameId].Players.Any(player => player.Id == playerId))
+    {
+      return false;
+    }
+
     // TODO: Validation player not in game already, game exists
-    await UpdateGameAsync(GameFactory.AddPlayer(_games[gameId], playerId));
-    _playerGameMap[playerId] = gameId;
+    await UpdateGameAsync(GameFactory.AddPlayer(_games[gameId], playerId), addUndoTarget: false);
+    return true;
   }
 
   public Task<GameState> GetGameAsync(string gameId)
@@ -40,24 +41,10 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
     return Task.FromResult(game ?? throw new InvalidOperationException($"Game {gameId} not found"));
   }
 
-  public Task<string?> GetPlayerGameIdAsync(string playerId)
-  {
-    _playerGameMap.TryGetValue(playerId, out var gameId);
-    return Task.FromResult(gameId);
-  }
-
   public Task RemoveGameAsync(string gameId)
   {
     _games.Remove(gameId, out _);
     _undoTargets.RemoveIf(key => key.GameId == gameId);
-    var playersInGame = _playerGameMap.Where(kvp => kvp.Value == gameId).Select(kvp => kvp.Key).ToArray();
-    _playerGameMap.RemoveIf(key => playersInGame.Contains(key));
-    return Task.CompletedTask;
-  }
-
-  public Task SetPlayerGameIdAsync(string playerId, string gameId)
-  {
-    _playerGameMap[playerId] = gameId;
     return Task.CompletedTask;
   }
 
@@ -69,6 +56,9 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
       {
         if (targets.Any())
         {
+          // TODO: Broken.
+          // This should remove any undos that are after this one,
+          // otherwise another player undoing could cause time travel.
           _undoTargets[(gameId, playerId)] = [.. targets.SkipLast(1)];
           await UpdateGameAsync(targets.Last(), addUndoTarget: false);
         }
