@@ -23,7 +23,7 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
 
     var game = await _gameService.GetGameAsync(gameId);
-    await AdvertiseGameAsync(new Game(game.GameId, game.Players.Select(p => p.Id).ToArray()));
+    await AdvertiseGameAsync(new Game(game.GameId, game.Players.Select(p => p.Id).ToArray(), game.ActivePlayerId));
 
     return gameId;
   }
@@ -75,6 +75,8 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
       if (!game.Players.Any())
       {
         await _gameService.RemoveGameAsync(gameId);
+
+        await AdvertiseGameEndedAsync(gameId);
       }
       else
       {
@@ -88,6 +90,8 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
   public async Task<GameStateViewModel> GetGameStateAsync(string gameId)
   {
     string playerId = GetPlayerId();
+    await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
+    await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
     var game = await _gameService.GetGameAsync(gameId);
     return game.ToPlayerGameStateViewModel(playerId);
   }
@@ -300,13 +304,17 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     if (game.GameResult is not null)
     {
       await _gameService.RemoveGameAsync(gameId);
+      await AdvertiseGameEndedAsync(gameId);
+    }
+    else
+    {
+      await UpdateGameListingAsync(new Game(game.GameId, game.Players.Select(p => p.Id).ToArray(), game.ActivePlayerId));
     }
   }
 
-  private async Task AdvertiseGameAsync(Game game)
-  {
-    await Clients.All.SendAsync("gameCreated", game);
-  }
+  private Task AdvertiseGameAsync(Game game) => Clients.All.SendAsync("gameCreated", game);
+  private Task AdvertiseGameEndedAsync(string gameId) => Clients.All.SendAsync("gameEnded", gameId);
+  private Task UpdateGameListingAsync(Game game) => Clients.All.SendAsync("gameUpdated", game);
 
   private string GetPlayerId() => (string)Context.GetHttpContext()!.Items["playerId"]!;
 }

@@ -75,8 +75,8 @@ public static partial class GameStateExtensions
   }
 
   public static GameState GainCardsFromSupply(this GameState @this, IEnumerable<int> cardIds, string? playerId = null, CardZone to = Discard) => cardIds.Aggregate(@this, (stateAccumulator, cardId) => stateAccumulator.GainCardFromSupply(cardId, playerId, to));
-  public static GameState MoveBetweenZones(this GameState @this, CardZone from, CardZone to, string playerId, CardInstance[] cards) => @this.RemoveFromCardZone(from, playerId, cards).AddToCardZone(to, playerId, cards);
-  public static GameState MoveAllFromZone(this GameState @this, CardZone from, CardZone to, string playerId) => @this.AddToCardZone(to, playerId, @this.CardsInZone(from, playerId)).RemoveFromCardZone(from, playerId, @this.CardsInZone(from, playerId));
+  public static GameState MoveBetweenZones(this GameState @this, CardZone from, CardZone to, string playerId, CardInstance[] cards, bool skipReactions = false) => @this.RemoveFromCardZone(from, playerId, cards).AddToCardZone(to, playerId, cards, skipReactions);
+  public static GameState MoveAllFromZone(this GameState @this, CardZone from, CardZone to, string playerId, bool skipReactions = false) => @this.AddToCardZone(to, playerId, @this.CardsInZone(from, playerId), skipReactions).RemoveFromCardZone(from, playerId, @this.CardsInZone(from, playerId));
   public static GameState TrashCards(this GameState @this, CardZone from, string playerId, CardInstance[] cards) => @this.MoveBetweenZones(from, Trash, playerId, cards);
   public static CardInstance[] CardsInZone(this GameState @this, CardZone from, string playerId) => from switch
   {

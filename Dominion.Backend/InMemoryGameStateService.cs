@@ -10,7 +10,7 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
   private readonly ConcurrentDictionary<string, GameState> _games = new();
   private readonly ConcurrentDictionary<(string GameId, string PlayerId), GameState[]> _undoTargets = new();
 
-  public Task<List<Game>> GetAllGameIdsAsync() => Task.FromResult(_games.Values.Select(g => new Game(g.GameId, [.. g.Players.Select(p => p.Id)])).ToList());
+  public Task<List<Game>> GetAllGameIdsAsync() => Task.FromResult(_games.Values.Select(g => new Game(g.GameId, [.. g.Players.Select(p => p.Id)], g.ActivePlayerId)).ToList());
 
   public Task<string> CreateGameAsync(string hostPlayerId)
   {

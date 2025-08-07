@@ -45,6 +45,7 @@ public class GoogleIdTokenMiddleware(RequestDelegate next)
     {
       var validationSettings = new GoogleJsonWebSignature.ValidationSettings
       {
+        // TODO: Configurable
         Audience = ["515082896158-m9qtkkba1tviq45ou8p5r83a86qoltgs.apps.googleusercontent.com"]
       };
 

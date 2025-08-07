@@ -6,10 +6,10 @@ namespace Dominion.Backend;
 
 public static class FluentExtensions
 {
-  public static EffectSequence MoveSelectedCardsTo(this EffectSequence @this, CardZone to) => @this.ThenAfterSelect((state, choice, result, ctx) =>
-    state.MoveBetweenZones(choice.Filter.From, to, ctx.PlayerId, result.SelectedCards));
+  public static EffectSequence MoveSelectedCardsTo(this EffectSequence @this, CardZone to, bool skipReactions = false) => @this.ThenAfterSelect((state, choice, result, ctx) =>
+    state.MoveBetweenZones(choice.Filter.From, to, ctx.PlayerId, result.SelectedCards, skipReactions));
 
-  public static EffectSequence MoveRevealedCardsTo(this EffectSequence @this, CardZone to, bool privateReveal = false) => @this.ThenAfterSelect((state, choice, result, ctx) => state.MoveAllFromZone(privateReveal ? CardZone.PrivateReveal : CardZone.Reveal, to, ctx.PlayerId));
+  public static EffectSequence MoveRevealedCardsTo(this EffectSequence @this, CardZone to, bool privateReveal = false, bool skipReactions = false) => @this.ThenAfterSelect((state, choice, result, ctx) => state.MoveAllFromZone(privateReveal ? CardZone.PrivateReveal : CardZone.Reveal, to, ctx.PlayerId, skipReactions));
 
   public static EffectSequence GainSelectedCards(this EffectSequence @this, CardZone to = CardZone.Discard) => @this.ThenAfterSelect((state, choice, result, ctx) => state.GainCardsFromSupply(result.SelectedCards.CardIds(), ctx.PlayerId, to));
 

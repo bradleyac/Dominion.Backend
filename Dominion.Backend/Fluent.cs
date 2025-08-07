@@ -31,7 +31,7 @@ public record EffectContext
 }
 
 public record PendingEffectResumeState(int EffectIndex, bool ReactionsTriggered, bool PostReactionsTriggered);
-public record EffectSequenceResumeState(string[] PlayerIds, int PlayerIndex, int SubeffectIndex, PlayerChoice? LastChoice);
+public record EffectSequenceResumeState(string[] PlayerIds, int PlayerIndex, int SubeffectIndex, PlayerChoice? LastChoice, PlayerChoiceResult? LastResult);
 
 public record PendingEffect
 {
@@ -185,15 +185,25 @@ public record EffectSequence
 
   protected EffectSequenceResumeState? ResumeState { get; init; }
 
+  // TODO: Major refactor. This has gotten out of hand.
   public (GameState, EffectSequence?, bool Restart) Resolve(GameState game, string ownerId, string currentEffectId, string? triggeringEffectId, CardInstance? reactingCard, CardZone? reactingCardLocation, PlayerChoiceResult? result)
   {
-    bool firstTime = ResumeState is null;
-    var resumeState = ResumeState ?? new EffectSequenceResumeState(game.GetTargets(ownerId, Target), 0, 0, null);
+    bool veryFirstTime = ResumeState is null;
+    var resumeState = ResumeState ?? new EffectSequenceResumeState(game.GetTargets(ownerId, Target), 0, 0, null, null);
 
-    if (resumeState.LastChoice is PlayerChoice choice && (result?.IsDeclined ?? false))
+    if (result is not null)
     {
-      game = choice.OnDecline(game, choice, result, new EffectContext { PlayerId = resumeState.PlayerIds[resumeState.PlayerIndex] });
-      resumeState = resumeState with { LastChoice = null, PlayerIndex = resumeState.PlayerIndex + 1, SubeffectIndex = 0 };
+      resumeState = resumeState with { LastResult = result };
+    }
+
+    if (resumeState.LastChoice is PlayerChoice choice && (resumeState.LastResult?.IsDeclined ?? false))
+    {
+      EffectContext context = new EffectContext { PlayerId = resumeState.PlayerIds[resumeState.PlayerIndex] };
+      game = choice.OnDecline(game, choice, resumeState.LastResult, context);
+      bool continueWithCurrentPlayer = LoopCondition(game, context);
+      // If we're in a loop and should continue with the current player, then leave the playerIndex alone.
+      // Set SubeffectIndex to -1 because it will be incremented by 1 later.
+      resumeState = resumeState with { LastChoice = null, PlayerIndex = resumeState.PlayerIndex + (continueWithCurrentPlayer ? 0 : 1), SubeffectIndex = -1 };
     }
 
     for (int playerIndex = resumeState.PlayerIndex; playerIndex < resumeState.PlayerIds.Length; playerIndex++)
@@ -212,7 +222,7 @@ public record EffectSequence
       do
       {
         game = game with { ActivePlayerId = resumeState.PlayerIds[playerIndex] };
-        resumeState = resumeState with { PlayerIndex = playerIndex, SubeffectIndex = (resumeState.PlayerIndex == playerIndex && !loopedOnce && !firstTime) ? resumeState.SubeffectIndex + 1 : 0 };
+        resumeState = resumeState with { PlayerIndex = playerIndex, SubeffectIndex = loopedOnce || veryFirstTime ? 0 : resumeState.SubeffectIndex + 1 };
 
         loopedOnce = true;
 
@@ -223,15 +233,27 @@ public record EffectSequence
           if (currentEffect is DoDelegate @do)
           {
             game = @do(game, context);
+
+            // If this effect isn't at the top of the stack anymore (because Reactions or similar) then leave this here and go back to the top.
+            if (game.EffectStack.Last().Id != currentEffectId)
+            {
+              return (game, this with { ResumeState = resumeState }, true);
+            }
           }
           else if (currentEffect is ThenDelegate then)
           {
-            game = then(game, resumeState.LastChoice!, result, context);
+            game = then(game, resumeState.LastChoice!, resumeState.LastResult, context);
+
+            // If this effect isn't at the top of the stack anymore (because Reactions or similar) then leave this here and go back to the top.
+            if (game.EffectStack.Last().Id != currentEffectId)
+            {
+              return (game, this with { ResumeState = resumeState }, true);
+            }
           }
           else if (currentEffect is ThenSelectDelegate thenSelect)
           {
-            var newChoice = thenSelect(game, resumeState.LastChoice!, result, context);
-            resumeState = resumeState with { LastChoice = newChoice };
+            var newChoice = thenSelect(game, resumeState.LastChoice!, resumeState.LastResult, context);
+            resumeState = resumeState with { LastChoice = newChoice, LastResult = null };
             if (game.DoAnyCardsMatch(newChoice.Filter, context.PlayerId))
             {
               return (game.UpdatePlayerChoice(context, newChoice), this with { ResumeState = resumeState }, false);
@@ -282,7 +304,7 @@ public record EffectSequence
           }
           else if (currentEffect is ThenCategorizeDelegate thenCategorizeFunc)
           {
-            var newChoice = thenCategorizeFunc(game, resumeState.LastChoice!, result, context);
+            var newChoice = thenCategorizeFunc(game, resumeState.LastChoice!, resumeState.LastResult, context);
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.CardsInZone(newChoice.ZoneToCategorize, context.PlayerId).Length > 0)
             {
@@ -295,7 +317,7 @@ public record EffectSequence
           }
           else if (currentEffect is ThenArrangeDelegate thenArrangeFunc)
           {
-            var newChoice = thenArrangeFunc(game, resumeState.LastChoice!, result, context);
+            var newChoice = thenArrangeFunc(game, resumeState.LastChoice!, resumeState.LastResult, context);
             resumeState = resumeState with { LastChoice = newChoice };
             if (game.CardsInZone(newChoice.ZoneToArrange, context.PlayerId).Length > 1)
             {
@@ -308,11 +330,15 @@ public record EffectSequence
           }
           else if (currentEffect is PlayerReactChoice reactChoice)
           {
-            if (result is PlayerReactChoiceResult reactResult)
+            if (resumeState.LastResult is PlayerReactChoiceResult reactResult)
             {
               game = game with { EffectStack = [.. game.EffectStack, new PendingEffect { ReactingCard = reactResult.ChosenReaction, ReactingCardLocation = reactChoice.EffectReferences.FirstOrDefault(effectRef => effectRef.CardInstance.InstanceId == reactResult.ChosenReaction.Id)?.CardInstance.Location, OwnerId = context.PlayerId, TriggeringEffectId = reactChoice.TriggeringEffectId, Effects = reactResult.ChosenReaction.Card.ReactionEffects }] };
               var newChoice = reactChoice with { Id = Guid.NewGuid().ToString(), EffectReferences = [.. reactChoice.EffectReferences.Where(e => e.CardInstance.InstanceId != reactResult.ChosenReaction.Id)] };
-              return (game, this with { ResumeState = resumeState, Effects = [.. Effects, newChoice] }, true);
+              return (game, this with
+              {
+                ResumeState = resumeState with { LastResult = null }, // Clear last result since we consumed it already and we'll be back.
+                Effects = [.. Effects, newChoice]
+              }, true);
             }
             else
             {

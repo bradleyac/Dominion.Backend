@@ -14,6 +14,7 @@ public static class GameFactory
       .. randomCardPool
         .Shuffle()
         .Take(10)
+        .OrderByDescending(id => (MasterCardData.AllCards[id].Cost, MasterCardData.AllCards[id].Name))
         .Select(id => (id, 10))
     ];
 

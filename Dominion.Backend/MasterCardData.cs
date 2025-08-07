@@ -18,13 +18,17 @@ public static class MasterCardData
     public const int Duchy = 9;
     public const int Province = 10;
     public const int Curse = 11;
+    public const int Cellar = 12;
     public const int Witch = 15;
     public const int Bandit = 17;
+    public const int Remodel = 20;
     public const int Vassal = 22;
     public const int Bureaucrat = 23;
+    public const int Harbinger = 25;
     public const int Militia = 26;
     public const int Sentry = 29;
     public const int ThroneRoom = 30;
+    public const int Library = 32;
     public const int Moat = 33;
     public const int Merchant = 34;
     public const int Beggar = 35;
@@ -36,6 +40,9 @@ public static class MasterCardData
     (CardIDs.Copper, 60),
     (CardIDs.Silver, 40),
     (CardIDs.Gold, 30),
+    // (CardIDs.Copper, 1),
+    // (CardIDs.Silver, 0),
+    // (CardIDs.Gold, 0),
     (CardIDs.Estate, 8),
     (CardIDs.Duchy, 8),
     (CardIDs.Province, 8),
@@ -161,7 +168,7 @@ public static class MasterCardData
       .ThenSelect((_, _) => new PlayerSelectChoice { Filter = new CardFilter { From = PrivateReveal, ExactCount = 1 }, Prompt = "Select a card to put on top of your deck", IsForced = false,
         OnDecline = (state, choice, result, ctx) => state.MoveAllFromZone(PrivateReveal, Discard, ctx.PlayerId) })
       .MoveSelectedCardsTo(Deck)
-      .MoveRevealedCardsTo(Discard, true)]},
+      .MoveRevealedCardsTo(Discard, true, skipReactions: true)]},
     new () { Id = 26, Name = "Militia", Cost = 4, Types = [Action, Attack], Effects = [
       Do(DoActivePlayer(p => p.GainCoins(2))),
       ForEach(EffectTarget.Opps, SelectCards((state, ctx) => new PlayerSelectChoice { Filter = new CardFilter { From = Hand, ExactCount = Math.Max(0, state.GetPlayer(ctx.PlayerId).Hand.Length - 3) }, Prompt = "Discard down to 3 cards in hand" })
@@ -203,7 +210,7 @@ public static class MasterCardData
     new () { Id = 32, Name = "Library", Cost = 5, Types = [Action], Effects = [
       Loop((state, ctx) => state.GetPlayer(ctx.PlayerId) is var player && player.Hand.Length < 7 && (player.Deck.Length + player.Discard.Length > 0),
         Do(RevealTopN(1, true))
-        .ThenSelect((state, ctx) => new PlayerSelectChoice { Filter = new CardFilter{ From = PrivateReveal, Types = [Action], ExactCount = 1 }, Prompt = "Select an action to set aside", IsForced = false })
+        .ThenSelect((state, ctx) => new PlayerSelectChoice { Filter = new CardFilter{ From = PrivateReveal, Types = [Action], ExactCount = 1 }, Prompt = "Select an action to set aside", IsForced = false, OnDecline = (state, choice, result, ctx) => state.MoveAllFromZone(PrivateReveal, Hand, ctx.PlayerId) })
         .MoveSelectedCardsTo(Reveal)
         .MoveRevealedCardsTo(Hand, true)),
       Do((state, ctx) => state.MoveAllFromZone(Reveal, Discard, ctx.PlayerId))]},

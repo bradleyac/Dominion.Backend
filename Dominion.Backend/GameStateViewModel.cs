@@ -2,7 +2,7 @@ using static Dominion.Backend.CardZone;
 
 namespace Dominion.Backend;
 
-public record Game(string GameId, string[] Players);
+public record Game(string GameId, string[] Players, string? ActivePlayerId);
 public record GameStateViewModel(string GameId, bool GameStarted, GameResult? GameResult, KingdomState KingdomState, TurnState TurnState, LogState Log, FullPlayerData Me, PartialPlayerData[] Opponents);
 public record TurnState(string CurrentTurnPlayerId, string? ActivePlayerId, int Turn, string Phase);
 public record LogState(string[] Messages);
