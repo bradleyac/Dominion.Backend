@@ -23,7 +23,7 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
 
     var game = await _gameService.GetGameAsync(gameId);
-    await AdvertiseGameAsync(new Game(game.GameId, game.Players.Select(p => p.Id).ToArray(), game.ActivePlayerId));
+    await AdvertiseGameAsync(new Game(game.GameId, game.DisplayName, game.Players.Select(p => p.Id).ToArray(), game.ActivePlayerId));
 
     return gameId;
   }
@@ -308,7 +308,7 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     }
     else
     {
-      await UpdateGameListingAsync(new Game(game.GameId, game.Players.Select(p => p.Id).ToArray(), game.ActivePlayerId));
+      await UpdateGameListingAsync(new Game(game.GameId, game.DisplayName, game.Players.Select(p => p.Id).ToArray(), game.ActivePlayerId));
     }
   }
 

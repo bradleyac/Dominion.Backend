@@ -67,4 +67,5 @@ public static class Utils
   }
 
   public static IEnumerable<T> Rotate<T>(this IEnumerable<T> @this, int count) => [.. @this.Skip(count), .. @this.Take(count)];
+  public static T GetRandomElement<T>(this T[] @this) => @this[Random.Shared.Next(0, @this.Length - 1)];
 }

@@ -20,6 +20,8 @@ public static class GameFactory
 
     return new GameState(
       GameId: Guid.NewGuid().ToString(),
+      DisplayName: WhimsicalNameFactory.GetName(),
+      SequenceId: 0,
       GameStarted: false,
       GameResult: null,
       KingdomCards: [.. kingdomCardInitData.Select(idCount => new CardPileState(MasterCardData.AllCards[idCount.Item1], idCount.Item2))],

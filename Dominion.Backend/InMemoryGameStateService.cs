@@ -4,13 +4,13 @@ namespace Dominion.Backend;
 
 public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) : IGameStateService
 {
-  private const int UndoCount = 20;
+  private const int UndoCount = 50;
   private readonly ILogger<InMemoryGameStateService> _logger = logger;
   // GameId to GameState map
   private readonly ConcurrentDictionary<string, GameState> _games = new();
-  private readonly ConcurrentDictionary<(string GameId, string PlayerId), GameState[]> _undoTargets = new();
+  private readonly ConcurrentDictionary<string, GameState[]> _undoTargets = new();
 
-  public Task<List<Game>> GetAllGameIdsAsync() => Task.FromResult(_games.Values.Select(g => new Game(g.GameId, [.. g.Players.Select(p => p.Id)], g.ActivePlayerId)).ToList());
+  public Task<List<Game>> GetAllGameIdsAsync() => Task.FromResult(_games.Values.Select(g => new Game(g.GameId, g.DisplayName, [.. g.Players.Select(p => p.Id)], g.ActivePlayerId)).ToList());
 
   public Task<string> CreateGameAsync(string hostPlayerId)
   {
@@ -44,25 +44,23 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
   public Task RemoveGameAsync(string gameId)
   {
     _games.Remove(gameId, out _);
-    _undoTargets.RemoveIf(key => key.GameId == gameId);
+    _undoTargets.Remove(gameId, out _);
     return Task.CompletedTask;
   }
 
   public async Task UndoAsync(string playerId, string gameId)
   {
-    if (_games.TryGetValue(gameId, out var game))
+    if (_games.TryGetValue(gameId, out var game) && _undoTargets.TryGetValue(gameId, out var targets))
     {
-      if (_undoTargets.TryGetValue((gameId, playerId), out var targets))
+      var lastActiveStateForPlayer = targets.Where(t => t.ActivePlayerId == playerId).LastOrDefault();
+
+      if (lastActiveStateForPlayer is null)
       {
-        if (targets.Any())
-        {
-          // TODO: Broken.
-          // This should remove any undos that are after this one,
-          // otherwise another player undoing could cause time travel.
-          _undoTargets[(gameId, playerId)] = [.. targets.SkipLast(1)];
-          await UpdateGameAsync(targets.Last(), addUndoTarget: false);
-        }
+        return;
       }
+
+      _undoTargets[gameId] = [.. targets.Where(t => t.SequenceId < lastActiveStateForPlayer.SequenceId)];
+      await UpdateGameAsync(lastActiveStateForPlayer, addUndoTarget: false);
     }
   }
 
@@ -70,22 +68,20 @@ public class InMemoryGameStateService(ILogger<InMemoryGameStateService> logger) 
   {
     var oldGame = _games[newGame.GameId];
 
-    if (addUndoTarget && oldGame is not null)
+    if (addUndoTarget && oldGame?.ActivePlayerId is not null or "")
     {
-      if (oldGame.ActivePlayerId is not null or "")
+      if (_undoTargets.TryGetValue(newGame.GameId, out var gameStates))
       {
-        if (_undoTargets.TryGetValue((oldGame.GameId, oldGame.ActivePlayerId), out var gameStates))
-        {
-          _undoTargets[(oldGame.GameId, oldGame.ActivePlayerId)] = [.. gameStates.TakeLast(UndoCount - 1), oldGame];
-        }
-        else
-        {
-          _undoTargets[(oldGame.GameId, oldGame.ActivePlayerId)] = [oldGame];
-        }
+        _undoTargets[newGame.GameId] = [.. gameStates.TakeLast(UndoCount - 1), oldGame];
+      }
+      else
+      {
+        _undoTargets[newGame.GameId] = [oldGame];
       }
     }
 
-    _games[newGame.GameId] = newGame;
+    _games[newGame.GameId] = newGame with { SequenceId = newGame.SequenceId + 1 };
+
     return Task.CompletedTask;
   }
 

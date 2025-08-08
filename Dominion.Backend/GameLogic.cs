@@ -217,4 +217,9 @@ public static class GameLogic
 
   private static bool HasCardInZone(GameState game, string playerId, string cardInstanceId, CardZone from, [NotNullWhen(true)] out CardInstance? cardInstance)
     => (cardInstance = game.CardsInZone(from, playerId).FirstOrDefault(card => card.Id == cardInstanceId)) is not null;
+
+  public static (GameState newState, bool) PlayCard(GameState gameState, string playerId, string id, object hand)
+  {
+    throw new NotImplementedException();
+  }
 }

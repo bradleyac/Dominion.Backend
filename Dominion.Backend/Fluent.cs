@@ -99,7 +99,7 @@ public record EffectSequence
   public delegate PlayerArrangeChoice DoArrangeDelegate(GameState gameState, EffectContext context);
   public delegate PlayerArrangeChoice ThenArrangeDelegate(GameState gameState, PlayerChoice choice, PlayerChoiceResult result, EffectContext context);
 
-  public Func<GameState, EffectContext, bool> LoopCondition { get; init; } = static (game, ctx) => false;
+  public Func<GameState, EffectContext, bool>? LoopCondition { get; init; }
   public EffectTarget Target { get; init; } = EffectTarget.Me;
   public List<object> Effects { get; set; } = [];
 
@@ -200,7 +200,7 @@ public record EffectSequence
     {
       EffectContext context = new EffectContext { PlayerId = resumeState.PlayerIds[resumeState.PlayerIndex] };
       game = choice.OnDecline(game, choice, resumeState.LastResult, context);
-      bool continueWithCurrentPlayer = LoopCondition(game, context);
+      bool continueWithCurrentPlayer = LoopCondition?.Invoke(game, context) ?? false;
       // If we're in a loop and should continue with the current player, then leave the playerIndex alone.
       // Set SubeffectIndex to -1 because it will be incremented by 1 later.
       resumeState = resumeState with { LastChoice = null, PlayerIndex = resumeState.PlayerIndex + (continueWithCurrentPlayer ? 0 : 1), SubeffectIndex = -1 };
@@ -219,7 +219,7 @@ public record EffectSequence
 
       bool loopedOnce = false;
 
-      do
+      while ((LoopCondition is null && !loopedOnce) || (LoopCondition?.Invoke(game, context) ?? false))
       {
         game = game with { ActivePlayerId = resumeState.PlayerIds[playerIndex] };
         resumeState = resumeState with { PlayerIndex = playerIndex, SubeffectIndex = loopedOnce || veryFirstTime ? 0 : resumeState.SubeffectIndex + 1 };
@@ -364,7 +364,7 @@ public record EffectSequence
             throw new NotImplementedException();
           }
         }
-      } while (LoopCondition(game, context));
+      }
     }
     return (game, null, false);
   }
