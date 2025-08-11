@@ -68,7 +68,7 @@ public static class MasterCardData
     new() { Id = 9, Name = "Duchy", Cost = 5, Value = 3, Types = [Victory], Effects = [] },
     new() { Id = 10, Name = "Province", Cost = 8, Value = 6, Types = [Victory], Effects = []},
     new() { Id = 11, Name = "Curse", Cost = 0, Value = -1, Types = [Curse], Effects = []},
-    new() { Id = 12, Name = "Cellar", Cost = 1, Types = [Action], Effects = [
+    new() { Id = 12, Name = "Cellar", Cost = 2, Types = [Action], Effects = [
       Do(DoActivePlayer(p => p.GainActions(1)))
       .ThenSelect((_,_) => new PlayerSelectChoice { Filter = new CardFilter { From = Hand }, Prompt="Select cards to discard" })
       .MoveSelectedCardsTo(Discard)
