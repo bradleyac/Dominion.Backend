@@ -115,9 +115,9 @@ public static class MasterCardData
         Filter = new CardFilter
         {
           From = Supply,
-          ExactCount = 1,
+          ExactCount = ((PlayerSelectChoiceResult)result).SelectedCards.Any() ? 1 : 0,
           MinCost = 0,
-          MaxCost = ((PlayerSelectChoiceResult)result).SelectedCards.Single().Card.Cost + 3,
+          MaxCost = ((PlayerSelectChoiceResult)result).SelectedCards.SingleOrDefault()?.Card.Cost + 3,
           Types = [Treasure]
         },
         Prompt = "Select a treasure to gain to your hand"
