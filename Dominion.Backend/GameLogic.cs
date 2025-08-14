@@ -23,13 +23,13 @@ public static class GameLogic
     PlayerState[] players = [.. game.Players.Shuffle().Select((player, i) =>
     {
       var shuffledDeck = player.Deck.Shuffle();
-      return player with
+      return (player with
       {
         Index = i,
         Hand = [.. shuffledDeck.Take(5)],
         Deck = [.. shuffledDeck.Skip(5)],
         Resources = i == 0 ? new PlayerResources(1, 1, 0, 0, 0, 0) : PlayerResources.Empty
-      };
+      }).GroupHand();
     })];
 
     return game with { GameStarted = true, Players = players, CurrentPlayer = 0, ActivePlayerId = players[0].Id };
@@ -210,7 +210,8 @@ public static class GameLogic
     Play = [],
     Hand = [],
     Resources = PlayerResources.EndTurn(player.Resources)
-  }).DrawCards(5);
+  }).DrawCards(5)
+    .GroupHand();
 
   private static bool IsActivePlayer(GameState game, string playerId, [NotNullWhen(true)] out PlayerState? player)
     => (player = game.ActivePlayerId == playerId && game.GetPlayer(playerId) is var p ? p : null) is not null;

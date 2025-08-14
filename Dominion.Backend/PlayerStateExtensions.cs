@@ -41,5 +41,34 @@ public static class PlayerStateExtensions
 
     return @this with { Deck = [.. deck], Hand = [.. hand], Discard = [.. discard] };
   }
+  public static PlayerState GroupHand(this PlayerState @this) => @this with { Hand = @this.Hand.GroupBy(c => c.Card.Id).OrderBy(g => g.Key, Comparer<int>.Create(CompareCards)).SelectMany(x => x).ToArray() };
   public static bool HasActionsToPlay(this PlayerState @this) => @this.Hand.Any(c => c.Card.Types.Contains(CardType.Action));
+
+  private static int CompareCards(int cardIdA, int cardIdB)
+  {
+    var cardA = MasterCardData.AllCards[cardIdA];
+    var cardB = MasterCardData.AllCards[cardIdB];
+
+    if (cardA.Types.Contains(CardType.Victory) && !cardB.Types.Contains(CardType.Victory))
+    {
+      return -1;
+    }
+    else if (!cardA.Types.Contains(CardType.Victory) && cardB.Types.Contains(CardType.Victory))
+    {
+      return 1;
+    }
+    else if (cardA.Types.Contains(CardType.Treasure) && !cardB.Types.Contains(CardType.Treasure))
+    {
+      return -1;
+    }
+    else if (!cardA.Types.Contains(CardType.Treasure) && cardB.Types.Contains(CardType.Treasure))
+    {
+      return 1;
+    }
+    else
+    {
+      int costCompare = cardA.Cost.CompareTo(cardB.Cost);
+      return costCompare == 0 ? cardA.Name.CompareTo(cardB.Name) : costCompare;
+    }
+  }
 }
