@@ -10,7 +10,7 @@ public record KingdomState(CardPile[] Supply, CardInstanceDto[] Trash, CardInsta
 public record CardPile(int CardId, int Count);
 public record CardInstanceDto(string InstanceId, int CardId, CardZone Location);
 public record EffectReference(CardInstanceDto CardInstance, string Prompt);
-public record FullPlayerData(string PlayerId, CardInstanceDto[] Hand, int DeckCount, CardInstanceDto[] Discard, CardInstanceDto[] Play, CardInstanceDto[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice);
+public record FullPlayerData(string PlayerId, CardInstanceDto[] Hand, int PlayAllTreasuresValue, int DeckCount, CardInstanceDto[] Discard, CardInstanceDto[] Play, CardInstanceDto[] PrivateReveal, PlayerResources Resources, PlayerChoice? ActiveChoice);
 public record PartialPlayerData(string PlayerId, int HandCount, int DeckCount, int DiscardCount, int? DiscardFaceUpCardId, CardInstanceDto[] Play, PlayerResources Resources);
 public record GameResult(string[] Winners, Dictionary<string, double> Scores);
 
@@ -29,7 +29,7 @@ public static partial class GameStateExtensions
       KingdomState: new KingdomState([.. @this.KingdomCards.Select(kc => new CardPile(kc.Card.Id, kc.Remaining))], [.. @this.Trash.Select(ToDto(Trash))], [.. @this.Reveal.Select(ToDto(Reveal))]),
       TurnState: new TurnState(@this.Players[@this.CurrentPlayer].Id, @this.ActivePlayerId, @this.CurrentTurn, @this.Phase.ToString()),
       Log: new LogState(@this.Log),
-      Me: new FullPlayerData(playerId, [.. player.Hand.Select(ToDto(Hand))], player.Deck.Length, [.. player.Discard.Select(ToDto(Discard))], [.. player.Play.Select(ToDto(Play))], [.. player.PrivateReveal.Select(ToDto(PrivateReveal))], player.Resources, player.ActiveChoice),
+      Me: new FullPlayerData(playerId, [.. player.Hand.Select(ToDto(Hand))], player.Hand.Sum(c => c.Card.CoinValue), player.Deck.Length, [.. player.Discard.Select(ToDto(Discard))], [.. player.Play.Select(ToDto(Play))], [.. player.PrivateReveal.Select(ToDto(PrivateReveal))], player.Resources, player.ActiveChoice),
       Opponents: [.. opps.Select(opp => new PartialPlayerData(opp.Id, opp.Hand.Length, opp.Deck.Length, opp.Discard.Length, opp.Discard.LastOrDefault()?.Card.Id, [.. opp.Play.Select(ToDto(Play))], opp.Resources))],
       PlayerIds: [.. @this.Players.Select(p => p.Id)]
     );

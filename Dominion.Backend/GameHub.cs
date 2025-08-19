@@ -15,8 +15,6 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
   public async Task<string> CreateGameAsync()
   {
     string playerId = GetPlayerId();
-    _logger.LogWarning($"PlayerId: {playerId}");
-
     string gameId = await _gameService.CreateGameAsync(playerId);
 
     await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
@@ -55,7 +53,6 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
   public async Task AbandonGameAsync(string gameId)
   {
     string playerId = GetPlayerId();
-
     var game = await _gameService.GetGameAsync(gameId);
 
     if (game.Players.Select(p => p.Id).Contains(playerId))
@@ -102,6 +99,36 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
     var game = await _gameService.GetGameAsync(gameId);
 
     var (newGameState, played) = GameLogic.PlayCard(game, playerId, cardInstanceId);
+
+    if (played)
+    {
+      await _gameService.UpdateGameAsync(newGameState);
+
+      await UpdateAllAsync(gameId);
+    }
+  }
+
+  public async Task PlayAllTreasuresAsync(string gameId)
+  {
+    string playerId = GetPlayerId();
+    var game = await _gameService.GetGameAsync(gameId);
+
+    var (newGameState, played) = GameLogic.PlayAllTreasures(game, playerId);
+
+    if (played)
+    {
+      await _gameService.UpdateGameAsync(newGameState);
+
+      await UpdateAllAsync(gameId);
+    }
+  }
+
+  public async Task PlayAllTreasuresAndBuyAsync(string gameId, int cardId)
+  {
+    string playerId = GetPlayerId();
+    var game = await _gameService.GetGameAsync(gameId);
+
+    var (newGameState, played) = GameLogic.PlayAllTreasuresAndBuy(game, playerId, cardId);
 
     if (played)
     {
@@ -249,22 +276,15 @@ public class GameHub(IGameStateService gameService, ILogger<GameHub> logger) : H
   {
     string playerId = GetPlayerId();
     var game = await _gameService.GetGameAsync(gameId);
-
-    if (game?.ActivePlayerId != playerId || game.GetPlayer(playerId).ActiveChoice is null)
-    {
-      // Not the right player.
-      return;
-    }
-
     var player = game.GetPlayer(playerId);
 
-    if (player.ActiveChoice?.Id != choiceId)
+    if (game?.ActivePlayerId != playerId || player.ActiveChoice?.Id != choiceId)
     {
-      // Old choice.
+      // Not the right player or old choice.
       return;
     }
 
-    if (player.ActiveChoice is not null && !player.ActiveChoice.IsForced)
+    if (!player.ActiveChoice.IsForced)
     {
       // TODO (somewhere): Validate choices
 

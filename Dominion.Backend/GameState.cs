@@ -24,7 +24,8 @@ public record CardData
   public required int Id { get; init; }
   public required string Name { get; init; }
   public required int Cost { get; init; }
-  public int Value { get; init; }
+  public int PointValue { get; init; }
+  public int CoinValue { get; init; }
   public Func<GameState, string, int>? ValueFunc { get; init; }
   public required CardType[] Types { get; init; }
   public required EffectSequence[] Effects { get; init; }

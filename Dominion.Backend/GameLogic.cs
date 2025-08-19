@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -70,7 +71,7 @@ public static class GameLogic
   // .5 points for not going yet breaks one level of ties.
   private static Dictionary<string, double> CalculateScores(GameState game) => game.Players.ToDictionary(
     p => p.Id,
-    p => p.Deck.SumBy(c => c.Card.ValueFunc?.Invoke(game, p.Id) ?? c.Card.Value)
+    p => p.Deck.SumBy(c => c.Card.ValueFunc?.Invoke(game, p.Id) ?? c.Card.PointValue)
       + p.Resources.Points
       + (p.Index > game.CurrentPlayer ? .5 : 0));
 
@@ -157,6 +158,46 @@ public static class GameLogic
     return (game, false);
   }
 
+  public static (GameState, bool Updated) PlayAllTreasures(GameState game, string playerId)
+  {
+    if (IsCurrentAndActivePlayer(game, playerId, out var thisPlayer))
+    {
+      var treasuresToPlay = thisPlayer.Hand.Where(c => c.Card.Types.Contains(CardType.Treasure));
+      bool playedAny = false;
+
+      foreach (var treasure in treasuresToPlay)
+      {
+        (game, bool played) = PlayCard(game, playerId, treasure.Id);
+        playedAny |= played;
+      }
+
+      return (game, playedAny);
+    }
+
+    return (game, false);
+  }
+
+  public static (GameState, bool Updated) PlayAllTreasuresAndBuy(GameState game, string playerId, int cardId)
+  {
+    if (IsCurrentAndActivePlayer(game, playerId, out var thisPlayer) && MasterCardData.AllCards.TryGetValue(cardId, out CardData? card))
+    {
+      bool canPlayTreasures = game.Phase is Phase.Action or Phase.BuyOrPlay; // If it's the Action phase currently then playing a treasure will go to the BuyOrPlay phase automatically.
+      bool treasuresWillCoverCost = thisPlayer.Hand.Sum(c => c.Card.CoinValue) + thisPlayer.Resources.Coins >= card.Cost;
+
+      if (canPlayTreasures && treasuresWillCoverCost)
+      {
+        (game, bool updated) = PlayAllTreasures(game, playerId);
+
+        if (updated)
+        {
+          return (BuyCard(game, playerId, cardId), true);
+        }
+      }
+    }
+
+    return (game, false);
+  }
+
   public static GameState ProcessEffectStack(GameState game, PlayerChoiceResult? lastResult = null)
   {
     game = game with { Players = [.. game.Players.Select(p => p with { ActiveChoice = null })] };
@@ -216,11 +257,9 @@ public static class GameLogic
   private static bool IsActivePlayer(GameState game, string playerId, [NotNullWhen(true)] out PlayerState? player)
     => (player = game.ActivePlayerId == playerId && game.GetPlayer(playerId) is var p ? p : null) is not null;
 
+  private static bool IsCurrentAndActivePlayer(GameState game, string playerId, [NotNullWhen(true)] out PlayerState? player)
+    => (player = game.ActivePlayerId == playerId && game.Players[game.CurrentPlayer].Id == playerId && game.GetPlayer(playerId) is var p ? p : null) is not null;
+
   private static bool HasCardInZone(GameState game, string playerId, string cardInstanceId, CardZone from, [NotNullWhen(true)] out CardInstance? cardInstance)
     => (cardInstance = game.CardsInZone(from, playerId).FirstOrDefault(card => card.Id == cardInstanceId)) is not null;
-
-  public static (GameState newState, bool) PlayCard(GameState gameState, string playerId, string id, object hand)
-  {
-    throw new NotImplementedException();
-  }
 }

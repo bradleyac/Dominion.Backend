@@ -7,6 +7,7 @@ public class GoogleIdTokenMiddleware(RequestDelegate next)
 {
   private RequestDelegate _next = next;
 
+  // TODO: Remove exception-based control flow, replace with e.g. Result pattern."
   public async Task InvokeAsync(HttpContext context)
   {
     // TODO: Set up auth to do this properly and/or use cookies?

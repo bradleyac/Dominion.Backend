@@ -61,13 +61,13 @@ public static class MasterCardData
     new() { Id = 2, Name = "Laboratory", Cost = 5, Types = [Action], Effects = [Do(DoActivePlayer(p => p.GainActions(1).DrawCards(2)))]},
     new() { Id = 3, Name = "Festival", Cost = 5, Types = [Action ], Effects = [Do(DoActivePlayer(p => p.GainActions(2).GainBuys(1).GainCoins(2)))]},
     new() { Id = 4, Name = "Market", Cost = 5, Types = [Action], Effects = [Do(DoActivePlayer(p => p.GainActions(1).DrawCards(1).GainBuys(1).GainCoins(1)))]},
-    new() { Id = 5, Name = "Copper", Cost = 0, Types = [Treasure], Effects = [Do(DoActivePlayer(p => p.GainCoins(1)))]},
-    new() { Id = 6, Name = "Silver", Cost = 3, Types = [Treasure], Effects=[Do(DoActivePlayer(p => p.GainCoins(2)))]},
-    new() { Id = 7, Name = "Gold", Cost = 6, Types = [Treasure], Effects=[Do(DoActivePlayer(p => p.GainCoins(3)))]},
-    new() { Id = 8, Name = "Estate", Cost = 2, Value = 1, Types = [Victory], Effects = [] },
-    new() { Id = 9, Name = "Duchy", Cost = 5, Value = 3, Types = [Victory], Effects = [] },
-    new() { Id = 10, Name = "Province", Cost = 8, Value = 6, Types = [Victory], Effects = []},
-    new() { Id = 11, Name = "Curse", Cost = 0, Value = -1, Types = [Curse], Effects = []},
+    new() { Id = 5, Name = "Copper", Cost = 0, CoinValue = 1, Types = [Treasure], Effects = [Do(DoActivePlayer(p => p.GainCoins(1)))]},
+    new() { Id = 6, Name = "Silver", Cost = 3, CoinValue = 2, Types = [Treasure], Effects=[Do(DoActivePlayer(p => p.GainCoins(2)))]},
+    new() { Id = 7, Name = "Gold", Cost = 6, CoinValue = 3, Types = [Treasure], Effects=[Do(DoActivePlayer(p => p.GainCoins(3)))]},
+    new() { Id = 8, Name = "Estate", Cost = 2, PointValue = 1, Types = [Victory], Effects = [] },
+    new() { Id = 9, Name = "Duchy", Cost = 5, PointValue = 3, Types = [Victory], Effects = [] },
+    new() { Id = 10, Name = "Province", Cost = 8, PointValue = 6, Types = [Victory], Effects = []},
+    new() { Id = 11, Name = "Curse", Cost = 0, PointValue = -1, Types = [Curse], Effects = []},
     new() { Id = 12, Name = "Cellar", Cost = 2, Types = [Action], Effects = [
       Do(DoActivePlayer(p => p.GainActions(1)))
       .ThenSelect((_,_) => new PlayerSelectChoice { Filter = new CardFilter { From = Hand }, Prompt="Select cards to discard" })
