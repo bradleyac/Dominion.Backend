@@ -15,7 +15,7 @@ public static class GameFactory
         .Shuffle()
         .Take(10)
         .OrderByDescending(id => (MasterCardData.AllCards[id].Cost, MasterCardData.AllCards[id].Name))
-        .Select(id => (id, 10))
+        .Select(id => (id, MasterCardData.AllCards[id].Types.Contains(CardType.Victory) ? 8 : 10))
     ];
 
     return new GameState(

@@ -1,6 +1,4 @@
-using System.Linq;
 using Dominion.Backend;
-using Stateless.Graph;
 
 namespace Fluent;
 
@@ -196,14 +194,24 @@ public record EffectSequence
       resumeState = resumeState with { LastResult = result };
     }
 
-    if (resumeState.LastChoice is PlayerChoice choice && (resumeState.LastResult?.IsDeclined ?? false))
+    bool continuing = false;
+
+    if (resumeState.LastChoice is PlayerChoice choice)
     {
-      EffectContext context = new EffectContext { PlayerId = resumeState.PlayerIds[resumeState.PlayerIndex] };
-      game = choice.OnDecline(game, choice, resumeState.LastResult, context);
-      bool continueWithCurrentPlayer = LoopCondition?.Invoke(game, context) ?? false;
-      // If we're in a loop and should continue with the current player, then leave the playerIndex alone.
-      // Set SubeffectIndex to -1 because it will be incremented by 1 later.
-      resumeState = resumeState with { LastChoice = null, PlayerIndex = resumeState.PlayerIndex + (continueWithCurrentPlayer ? 0 : 1), SubeffectIndex = -1 };
+      if (resumeState.LastResult?.IsDeclined ?? false)
+      {
+        EffectContext context = new EffectContext { PlayerId = resumeState.PlayerIds[resumeState.PlayerIndex] };
+        game = choice.OnDecline(game, choice, resumeState.LastResult, context);
+        bool continueWithCurrentPlayer = LoopCondition?.Invoke(game, context) ?? false;
+        // If we're in a loop and should continue with the current player, then leave the playerIndex alone.
+        // Set SubeffectIndex to -1 because it will be incremented by 1 later.
+        resumeState = resumeState with { LastChoice = null, PlayerIndex = resumeState.PlayerIndex + (continueWithCurrentPlayer ? 0 : 1), SubeffectIndex = -1 };
+      }
+      else
+      {
+        // Always loop at least once when we're returning from a choice, even if the LoopCondition would prevent it.
+        continuing = true;
+      }
     }
 
     for (int playerIndex = resumeState.PlayerIndex; playerIndex < resumeState.PlayerIds.Length; playerIndex++)
@@ -219,7 +227,7 @@ public record EffectSequence
 
       bool loopedOnce = false;
 
-      while ((LoopCondition is null && !loopedOnce) || (LoopCondition?.Invoke(game, context) ?? false))
+      while (((LoopCondition is null || continuing) && !loopedOnce) || (LoopCondition?.Invoke(game, context) ?? false))
       {
         game = game with { ActivePlayerId = resumeState.PlayerIds[playerIndex] };
         resumeState = resumeState with { PlayerIndex = playerIndex, SubeffectIndex = loopedOnce || veryFirstTime ? 0 : resumeState.SubeffectIndex + 1 };

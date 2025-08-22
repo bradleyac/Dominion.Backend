@@ -52,7 +52,7 @@ public static class MasterCardData
   public static readonly (int, int)[] StartingDeck = [
     (CardIDs.Copper, 7),
     (CardIDs.Estate, 3),
-    // (CardIDs.Trail, 5),
+    // (CardIDs.Library, 10),
     // (CardIDs.Bandit, 5),
   ];
 
